@@ -1,0 +1,138 @@
+const organizations = [
+  { id: 1, name: "Northstar Energy Services", contact_email: "ops@northstar.example" },
+  { id: 2, name: "Lagos Prime Fuels", contact_email: "support@lagosprime.example" }
+];
+
+const outlets = [
+  {
+    id: 1,
+    organization_id: 1,
+    organization_name: "Northstar Energy Services",
+    name: "Northstar Lekki Phase 1",
+    city: "Lagos",
+    address: "Admiralty Way, Lekki Phase 1",
+    phone: "+234 800 100 1001",
+    is_open: true
+  },
+  {
+    id: 2,
+    organization_id: 1,
+    organization_name: "Northstar Energy Services",
+    name: "Northstar Victoria Island",
+    city: "Lagos",
+    address: "Ahmadu Bello Way, VI",
+    phone: "+234 800 100 1002",
+    is_open: true
+  },
+  {
+    id: 3,
+    organization_id: 2,
+    organization_name: "Lagos Prime Fuels",
+    name: "Lagos Prime Ikeja",
+    city: "Lagos",
+    address: "Obafemi Awolowo Way, Ikeja",
+    phone: "+234 800 200 2001",
+    is_open: true
+  }
+];
+
+const products = [
+  { id: 1, outlet_id: 1, name: "PMS Petrol", unit: "litre", price: 720, available_quantity: 18000 },
+  { id: 2, outlet_id: 1, name: "AGO Diesel", unit: "litre", price: 1120, available_quantity: 9000 },
+  { id: 3, outlet_id: 2, name: "PMS Petrol", unit: "litre", price: 725, available_quantity: 12000 },
+  { id: 4, outlet_id: 2, name: "LPG Cooking Gas", unit: "kg", price: 1250, available_quantity: 2200 },
+  { id: 5, outlet_id: 3, name: "AGO Diesel", unit: "litre", price: 1115, available_quantity: 16000 },
+  { id: 6, outlet_id: 3, name: "Engine Oil 5W-30", unit: "bottle", price: 8500, available_quantity: 140 }
+];
+
+const orders = [];
+
+function withOutletAndOrganization(product) {
+  const outlet = outlets.find((item) => item.id === product.outlet_id);
+  return {
+    ...product,
+    outlet_name: outlet.name,
+    city: outlet.city,
+    address: outlet.address,
+    phone: outlet.phone,
+    is_open: outlet.is_open,
+    organization_name: outlet.organization_name
+  };
+}
+
+function withOrderDetails(order) {
+  const product = products.find((item) => item.id === order.product_id);
+  const outlet = outlets.find((item) => item.id === order.outlet_id);
+  return {
+    ...order,
+    product_name: product.name,
+    unit: product.unit,
+    price: product.price,
+    outlet_name: outlet.name,
+    organization_name: outlet.organization_name
+  };
+}
+
+function createMemoryStore() {
+  return {
+    mode: "memory",
+
+    async listMarketplace() {
+      return products.map(withOutletAndOrganization);
+    },
+
+    async getOrderContext(outletId, productId) {
+      const product = products.find((item) => item.id === productId && item.outlet_id === outletId);
+      if (!product) {
+        return null;
+      }
+      return withOutletAndOrganization(product);
+    },
+
+    async createOrder(input) {
+      const product = products.find((item) => item.id === input.productId && item.outlet_id === input.outletId);
+      if (!product) {
+        throw new Error("Selected product is no longer available.");
+      }
+
+      if (Number(input.quantity) > Number(product.available_quantity)) {
+        throw new Error("Requested quantity is above available outlet stock.");
+      }
+
+      product.available_quantity = Number(product.available_quantity) - Number(input.quantity);
+
+      const order = {
+        id: orders.length + 1,
+        outlet_id: input.outletId,
+        product_id: input.productId,
+        buyer_name: input.buyerName,
+        buyer_phone: input.buyerPhone,
+        buyer_email: input.buyerEmail,
+        quantity: Number(input.quantity),
+        fulfillment_method: input.fulfillmentMethod,
+        delivery_address: input.deliveryAddress || "",
+        notes: input.notes || "",
+        status: "pending",
+        created_at: new Date().toISOString()
+      };
+
+      orders.push(order);
+      return withOrderDetails(order);
+    },
+
+    async listOrders() {
+      return orders.slice().reverse().map(withOrderDetails);
+    },
+
+    async updateOrderStatus(orderId, status) {
+      const order = orders.find((item) => item.id === orderId);
+      if (!order) {
+        throw new Error("Order not found.");
+      }
+      order.status = status;
+      return withOrderDetails(order);
+    }
+  };
+}
+
+module.exports = { createMemoryStore };
