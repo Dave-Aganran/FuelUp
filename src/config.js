@@ -14,6 +14,7 @@ function readBoolean(name, fallback = false) {
 function createConfig() {
   const nodeEnv = process.env.NODE_ENV || "development";
   const databaseUrl = process.env.DATABASE_URL || "";
+  const authSecret = process.env.AUTH_SECRET || (nodeEnv === "production" ? databaseUrl : "dev-only-auth-secret");
 
   return {
     nodeEnv,
@@ -24,6 +25,10 @@ function createConfig() {
     maxRequestBody: process.env.MAX_REQUEST_BODY || "20kb",
     rateLimitWindowMs: readNumber("RATE_LIMIT_WINDOW_MS", 60 * 1000),
     rateLimitMax: readNumber("RATE_LIMIT_MAX", nodeEnv === "production" ? 120 : 1000),
+    authSecret,
+    cookieSecure: readBoolean("COOKIE_SECURE", nodeEnv === "production"),
+    adminEmail: process.env.ADMIN_EMAIL || "",
+    adminPassword: process.env.ADMIN_PASSWORD || "",
     appName: "FuelUp"
   };
 }

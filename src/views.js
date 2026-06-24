@@ -36,7 +36,7 @@ function layout({ title, body, storeMode }) {
       <nav aria-label="Primary navigation">
         <a href="/">Marketplace</a>
         <a href="/dashboard">Operations</a>
-        <a href="/readiness">Readiness</a>
+        <a href="/login">Login</a>
       </nav>
     </header>
     <main>
@@ -48,6 +48,36 @@ function layout({ title, body, storeMode }) {
     </footer>
   </body>
 </html>`;
+}
+
+function loginPage({ storeMode, nextPath, error = "", adminConfigured = true }) {
+  return layout({
+    title: "Operator Login",
+    storeMode,
+    body: `
+      <section class="auth-shell">
+        <div class="auth-card">
+          <p class="eyebrow">Secure operations</p>
+          <h1>Operator login</h1>
+          <p>Access is required for order management, outlet fulfillment, and status changes.</p>
+          ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
+          ${adminConfigured ? "" : `<p class="alert">No operator account is configured yet. Set ADMIN_EMAIL and ADMIN_PASSWORD in Render.</p>`}
+          <form method="post" action="/login">
+            <input type="hidden" name="next" value="${escapeHtml(nextPath)}">
+            <label>
+              Email
+              <input required type="email" name="email" autocomplete="username" placeholder="ops@example.com">
+            </label>
+            <label>
+              Password
+              <input required type="password" name="password" autocomplete="current-password" placeholder="Enter password">
+            </label>
+            <button class="button wide" type="submit">Sign in</button>
+          </form>
+        </div>
+      </section>
+    `
+  });
 }
 
 function marketplacePage(products, storeMode) {
@@ -235,7 +265,7 @@ function orderSuccessPage(order, storeMode) {
   });
 }
 
-function dashboardPage(orders, summary, storeMode, message = "") {
+function dashboardPage({ orders, summary, storeMode, message = "", user, csrfToken }) {
   const metricCards = [
     ["Total orders", summary.totalOrders || 0],
     ["Pending", summary.pendingOrders || 0],
@@ -277,6 +307,7 @@ function dashboardPage(orders, summary, storeMode, message = "") {
               <td><span class="status status-${escapeHtml(order.status)}">${escapeHtml(order.status)}</span></td>
               <td>
                 <form class="inline-form" method="post" action="/orders/${order.id}/status">
+                  <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
                   <select name="status" aria-label="Order status">
                     ${["pending", "accepted", "ready", "completed", "cancelled"]
                       .map(
@@ -302,9 +333,15 @@ function dashboardPage(orders, summary, storeMode, message = "") {
         <div>
           <p class="eyebrow">Outlet operations</p>
           <h1>Order control center</h1>
-          <p>Monitor incoming buyer reservations, move orders through fulfillment, and keep station teams aligned.</p>
+          <p>Signed in as ${escapeHtml(user.email)}. Monitor incoming buyer reservations, move orders through fulfillment, and keep station teams aligned.</p>
         </div>
-        <a class="button secondary" href="/">Create buyer order</a>
+        <div class="hero-actions">
+          <a class="button secondary" href="/">Create buyer order</a>
+          <form class="logout-form" method="post" action="/logout">
+            <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+            <button class="button ghost" type="submit">Sign out</button>
+          </form>
+        </div>
       </section>
 
       <section class="metrics-grid">
@@ -335,6 +372,7 @@ function dashboardPage(orders, summary, storeMode, message = "") {
 
 module.exports = {
   dashboardPage,
+  loginPage,
   marketplacePage,
   orderFormPage,
   orderSuccessPage

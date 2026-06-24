@@ -3,6 +3,17 @@ const compression = require("compression");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { Pool } = require("pg");
+const {
+  attachUser,
+  clearAuthCookies,
+  getCsrfToken,
+  hashPassword,
+  parseCookies,
+  requireAuth,
+  requireCsrf,
+  setAuthCookies,
+  verifyPassword
+} = require("./auth");
 const { createConfig } = require("./config");
 const { initDatabase } = require("./db/init");
 const { createMemoryStore } = require("./data/memoryStore");
@@ -10,6 +21,7 @@ const { createPostgresStore } = require("./data/postgresStore");
 const { normalizeOrderInput, normalizeStatus } = require("./validation");
 const {
   dashboardPage,
+  loginPage,
   marketplacePage,
   orderFormPage,
   orderSuccessPage
@@ -35,6 +47,18 @@ async function main() {
   const config = createConfig();
   const app = express();
   const store = await createStore(config);
+  const adminConfigured = Boolean(config.adminEmail && config.adminPassword);
+
+  if (adminConfigured) {
+    await store.upsertUser({
+      email: config.adminEmail.toLowerCase(),
+      name: "FuelUp Admin",
+      passwordHash: await hashPassword(config.adminPassword),
+      role: "admin"
+    });
+  } else if (config.isProduction) {
+    console.warn("ADMIN_EMAIL and ADMIN_PASSWORD are not configured. Operations login is disabled.");
+  }
 
   if (config.trustProxy) {
     app.set("trust proxy", 1);
@@ -65,6 +89,8 @@ async function main() {
     })
   );
   app.use(express.urlencoded({ extended: false, limit: config.maxRequestBody }));
+  app.use(parseCookies);
+  app.use(attachUser(config));
   app.use(express.static("public", { maxAge: config.isProduction ? "1h" : 0 }));
 
   app.get("/health", (_request, response) => {
@@ -89,6 +115,45 @@ async function main() {
     } catch (error) {
       next(error);
     }
+  });
+
+  app.get("/login", (request, response) => {
+    response.send(loginPage({
+      storeMode: store.mode,
+      nextPath: request.query.next || "/dashboard",
+      error: request.query.error || "",
+      adminConfigured
+    }));
+  });
+
+  app.post("/login", async (request, response, next) => {
+    try {
+      if (!adminConfigured) {
+        response.redirect("/login?error=Operations%20login%20is%20not%20configured");
+        return;
+      }
+
+      const email = String(request.body.email || "").trim().toLowerCase();
+      const password = String(request.body.password || "");
+      const user = await store.findUserByEmail(email);
+      const valid = user && await verifyPassword(password, user.password_hash);
+
+      if (!valid) {
+        response.redirect("/login?error=Invalid%20email%20or%20password");
+        return;
+      }
+
+      setAuthCookies(response, user, config);
+      const nextPath = String(request.body.next || "/dashboard");
+      response.redirect(nextPath.startsWith("/") ? nextPath : "/dashboard");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/logout", requireAuth, requireCsrf(config), (request, response) => {
+    clearAuthCookies(response, config);
+    response.redirect("/");
   });
 
   app.get("/orders/new", async (request, response, next) => {
@@ -128,17 +193,24 @@ async function main() {
     }
   });
 
-  app.get("/dashboard", async (request, response, next) => {
+  app.get("/dashboard", requireAuth, async (request, response, next) => {
     try {
       const orders = await store.listOrders();
       const summary = await store.getDashboardSummary();
-      response.send(dashboardPage(orders, summary, store.mode, request.query.message || ""));
+      response.send(dashboardPage({
+        orders,
+        summary,
+        storeMode: store.mode,
+        message: request.query.message || "",
+        user: request.user,
+        csrfToken: getCsrfToken(request, config)
+      }));
     } catch (error) {
       next(error);
     }
   });
 
-  app.post("/orders/:id/status", async (request, response, next) => {
+  app.post("/orders/:id/status", requireAuth, requireCsrf(config), async (request, response, next) => {
     try {
       const status = normalizeStatus(request.body.status);
       if (!status) {

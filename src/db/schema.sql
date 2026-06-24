@@ -45,6 +45,17 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'operator' CHECK (role IN ('admin', 'operator')),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_reference TEXT UNIQUE;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS unit_price NUMERIC(12, 2);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(14, 2);
@@ -54,3 +65,4 @@ CREATE INDEX IF NOT EXISTS idx_products_outlet_id ON products(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_outlet_id ON orders(outlet_id);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);

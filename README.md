@@ -15,6 +15,9 @@ FuelUp is a trading and ordering platform that connects buyers with downstream o
 - Request body limits and rate limiting
 - Health and readiness endpoints
 - Order references, order values, and dashboard metrics
+- Operator login for operations dashboard
+- Signed HTTP-only auth cookies
+- CSRF protection for operator state changes
 - Production-oriented Render configuration
 
 ## Local Run
@@ -53,8 +56,20 @@ The app creates or updates its database tables and seed data automatically on st
 - `/` - buyer marketplace
 - `/orders/new?outletId=1&productId=1` - order form
 - `/dashboard` - outlet/admin order board
+- `/login` - operator login
 - `/health` - Render health check
 - `/readiness` - database readiness check
+
+## Required Production Environment Variables
+
+Set these in Render before exposing operations users:
+
+- `ADMIN_EMAIL` - first admin/operator login email
+- `ADMIN_PASSWORD` - first admin/operator password
+- `AUTH_SECRET` - generated automatically by the Render Blueprint for new deployments
+- `COOKIE_SECURE=true` - already configured in `render.yaml`
+
+If `ADMIN_EMAIL` and `ADMIN_PASSWORD` are not set, the public marketplace still runs, but the operations dashboard cannot be accessed.
 
 ## Production Readiness Status
 
@@ -67,6 +82,9 @@ Completed baseline:
 - Rate limiting
 - Request body limits
 - Input normalization and validation
+- Password-hashed operator login
+- Protected operations dashboard
+- CSRF protection for status updates and logout
 - Database indexes for common operational paths
 - Graceful shutdown
 - Health and readiness checks
@@ -75,8 +93,8 @@ Completed baseline:
 Remaining production blockers:
 
 - Real authentication and role-based access control
+- Multi-user invitation and password reset flow
 - Organization and outlet onboarding/verification workflow
-- Admin-only dashboard protection
 - Payment collection and settlement reconciliation
 - Audit logs for order and inventory changes
 - Stock adjustment controls for station staff

@@ -46,6 +46,7 @@ const products = [
 ];
 
 const orders = [];
+const users = [];
 
 function orderReference(id) {
   return `FUP-${String(id).padStart(6, "0")}`;
@@ -138,6 +139,41 @@ function createMemoryStore() {
       const completedOrders = orders.filter((item) => item.status === "completed").length;
       const totalValue = orders.reduce((sum, item) => sum + Number(item.total_amount || 0), 0);
       return { totalOrders, pendingOrders, completedOrders, totalValue };
+    },
+
+    async findUserByEmail(email) {
+      return users.find((item) => item.email === email && item.is_active) || null;
+    },
+
+    async findUserById(id) {
+      return users.find((item) => item.id === id && item.is_active) || null;
+    },
+
+    async upsertUser(input) {
+      const existing = users.find((item) => item.email === input.email);
+      if (existing) {
+        Object.assign(existing, {
+          name: input.name,
+          password_hash: input.passwordHash,
+          role: input.role,
+          is_active: true,
+          updated_at: new Date().toISOString()
+        });
+        return existing;
+      }
+
+      const user = {
+        id: users.length + 1,
+        email: input.email,
+        name: input.name,
+        password_hash: input.passwordHash,
+        role: input.role,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      users.push(user);
+      return user;
     },
 
     async updateOrderStatus(orderId, status) {

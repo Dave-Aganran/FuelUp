@@ -169,6 +169,40 @@ function createPostgresStore(pool) {
       return rows[0];
     },
 
+    async findUserByEmail(email) {
+      const { rows } = await pool.query(
+        "SELECT id, email, name, password_hash, role, is_active FROM users WHERE email = $1 AND is_active = TRUE",
+        [email]
+      );
+      return rows[0] || null;
+    },
+
+    async findUserById(id) {
+      const { rows } = await pool.query(
+        "SELECT id, email, name, role, is_active FROM users WHERE id = $1 AND is_active = TRUE",
+        [id]
+      );
+      return rows[0] || null;
+    },
+
+    async upsertUser(input) {
+      const { rows } = await pool.query(
+        `
+          INSERT INTO users (email, name, password_hash, role)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (email) DO UPDATE SET
+            name = EXCLUDED.name,
+            password_hash = EXCLUDED.password_hash,
+            role = EXCLUDED.role,
+            is_active = TRUE,
+            updated_at = NOW()
+          RETURNING id, email, name, role, is_active
+        `,
+        [input.email, input.name, input.passwordHash, input.role]
+      );
+      return rows[0];
+    },
+
     async updateOrderStatus(orderId, status) {
       const { rows } = await pool.query(
         "UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
