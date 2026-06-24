@@ -1,3 +1,9 @@
+const crypto = require("crypto");
+
+function createReference() {
+  return `FUP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+}
+
 function createPostgresStore(pool) {
   return {
     mode: "postgres",
@@ -56,7 +62,7 @@ function createPostgresStore(pool) {
       try {
         await client.query("BEGIN");
         const productResult = await client.query(
-          "SELECT available_quantity::float FROM products WHERE id = $1 AND outlet_id = $2 FOR UPDATE",
+          "SELECT price::float, available_quantity::float FROM products WHERE id = $1 AND outlet_id = $2 FOR UPDATE",
           [input.productId, input.outletId]
         );
 
@@ -65,6 +71,7 @@ function createPostgresStore(pool) {
         }
 
         const availableQuantity = Number(productResult.rows[0].available_quantity);
+        const unitPrice = Number(productResult.rows[0].price);
         if (Number(input.quantity) > availableQuantity) {
           throw new Error("Requested quantity is above available outlet stock.");
         }
@@ -80,9 +87,12 @@ function createPostgresStore(pool) {
               quantity,
               fulfillment_method,
               delivery_address,
-              notes
+              notes,
+              order_reference,
+              unit_price,
+              total_amount
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING *
           `,
           [
@@ -94,7 +104,10 @@ function createPostgresStore(pool) {
             input.quantity,
             input.fulfillmentMethod,
             input.deliveryAddress || null,
-            input.notes || null
+            input.notes || null,
+            createReference(),
+            unitPrice,
+            unitPrice * Number(input.quantity)
           ]
         );
 
@@ -117,6 +130,7 @@ function createPostgresStore(pool) {
       const { rows } = await pool.query(`
         SELECT
           ord.id,
+          ord.order_reference,
           ord.buyer_name,
           ord.buyer_phone,
           ord.buyer_email,
@@ -124,8 +138,11 @@ function createPostgresStore(pool) {
           ord.fulfillment_method,
           ord.delivery_address,
           ord.notes,
+          ord.unit_price::float,
+          ord.total_amount::float,
           ord.status,
           ord.created_at,
+          ord.updated_at,
           p.name AS product_name,
           p.unit,
           p.price::float,
@@ -140,11 +157,23 @@ function createPostgresStore(pool) {
       return rows;
     },
 
+    async getDashboardSummary() {
+      const { rows } = await pool.query(`
+        SELECT
+          COUNT(*)::int AS "totalOrders",
+          COUNT(*) FILTER (WHERE status = 'pending')::int AS "pendingOrders",
+          COUNT(*) FILTER (WHERE status = 'completed')::int AS "completedOrders",
+          COALESCE(SUM(total_amount), 0)::float AS "totalValue"
+        FROM orders
+      `);
+      return rows[0];
+    },
+
     async updateOrderStatus(orderId, status) {
-      const { rows } = await pool.query("UPDATE orders SET status = $1 WHERE id = $2 RETURNING *", [
-        status,
-        orderId
-      ]);
+      const { rows } = await pool.query(
+        "UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+        [status, orderId]
+      );
       if (rows.length === 0) {
         throw new Error("Order not found.");
       }

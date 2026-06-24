@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS products (
 
 CREATE TABLE IF NOT EXISTS orders (
   id SERIAL PRIMARY KEY,
+  order_reference TEXT UNIQUE,
   outlet_id INTEGER NOT NULL REFERENCES outlets(id),
   product_id INTEGER NOT NULL REFERENCES products(id),
   buyer_name TEXT NOT NULL,
@@ -37,6 +38,19 @@ CREATE TABLE IF NOT EXISTS orders (
   fulfillment_method TEXT NOT NULL CHECK (fulfillment_method IN ('pickup', 'delivery')),
   delivery_address TEXT,
   notes TEXT,
+  unit_price NUMERIC(12, 2),
+  total_amount NUMERIC(14, 2),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'ready', 'completed', 'cancelled')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_reference TEXT UNIQUE;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS unit_price NUMERIC(12, 2);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(14, 2);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_products_outlet_id ON products(outlet_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_outlet_id ON orders(outlet_id);

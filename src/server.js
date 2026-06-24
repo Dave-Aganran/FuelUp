@@ -1,8 +1,13 @@
 const express = require("express");
+const compression = require("compression");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const { Pool } = require("pg");
+const { createConfig } = require("./config");
 const { initDatabase } = require("./db/init");
 const { createMemoryStore } = require("./data/memoryStore");
 const { createPostgresStore } = require("./data/postgresStore");
+const { normalizeOrderInput, normalizeStatus } = require("./validation");
 const {
   dashboardPage,
   marketplacePage,
@@ -10,30 +15,71 @@ const {
   orderSuccessPage
 } = require("./views");
 
-const allowedStatuses = new Set(["pending", "accepted", "ready", "completed", "cancelled"]);
-
-async function createStore() {
-  if (!process.env.DATABASE_URL) {
+async function createStore(config) {
+  if (!config.databaseUrl) {
     return createMemoryStore();
   }
 
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined
+    connectionString: config.databaseUrl,
+    ssl: config.isProduction ? { rejectUnauthorized: false } : undefined,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000
   });
   await initDatabase(pool);
-  return createPostgresStore(pool);
+  return { ...createPostgresStore(pool), pool };
 }
 
 async function main() {
+  const config = createConfig();
   const app = express();
-  const store = await createStore();
+  const store = await createStore(config);
 
-  app.use(express.urlencoded({ extended: false }));
-  app.use(express.static("public"));
+  if (config.trustProxy) {
+    app.set("trust proxy", 1);
+  }
+
+  app.disable("x-powered-by");
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'"],
+          imgSrc: ["'self'", "data:"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"]
+        }
+      }
+    })
+  );
+  app.use(compression());
+  app.use(
+    rateLimit({
+      windowMs: config.rateLimitWindowMs,
+      max: config.rateLimitMax,
+      standardHeaders: true,
+      legacyHeaders: false
+    })
+  );
+  app.use(express.urlencoded({ extended: false, limit: config.maxRequestBody }));
+  app.use(express.static("public", { maxAge: config.isProduction ? "1h" : 0 }));
 
   app.get("/health", (_request, response) => {
-    response.json({ ok: true, mode: store.mode });
+    response.json({ ok: true, mode: store.mode, env: config.nodeEnv });
+  });
+
+  app.get("/readiness", async (_request, response) => {
+    try {
+      if (store.pool) {
+        await store.pool.query("SELECT 1");
+      }
+      response.json({ ok: true, database: store.mode === "postgres" ? "connected" : "not-configured" });
+    } catch (error) {
+      response.status(503).json({ ok: false, database: "unavailable" });
+    }
   });
 
   app.get("/", async (_request, response, next) => {
@@ -63,29 +109,11 @@ async function main() {
   });
 
   app.post("/orders", async (request, response, next) => {
-    const input = {
-      outletId: Number(request.body.outletId),
-      productId: Number(request.body.productId),
-      buyerName: request.body.buyerName,
-      buyerPhone: request.body.buyerPhone,
-      buyerEmail: request.body.buyerEmail,
-      quantity: Number(request.body.quantity),
-      fulfillmentMethod: request.body.fulfillmentMethod,
-      deliveryAddress: request.body.deliveryAddress,
-      notes: request.body.notes
-    };
+    const { input, errors } = normalizeOrderInput(request.body);
 
     try {
-      if (!input.buyerName || !input.buyerPhone || !input.buyerEmail || !input.quantity) {
-        throw new Error("Please complete buyer contact details and quantity.");
-      }
-
-      if (!["pickup", "delivery"].includes(input.fulfillmentMethod)) {
-        throw new Error("Choose a valid fulfillment method.");
-      }
-
-      if (input.fulfillmentMethod === "delivery" && !input.deliveryAddress) {
-        throw new Error("Delivery address is required for delivery requests.");
+      if (errors.length > 0) {
+        throw new Error(errors.join(" "));
       }
 
       const order = await store.createOrder(input);
@@ -103,7 +131,8 @@ async function main() {
   app.get("/dashboard", async (request, response, next) => {
     try {
       const orders = await store.listOrders();
-      response.send(dashboardPage(orders, store.mode, request.query.message || ""));
+      const summary = await store.getDashboardSummary();
+      response.send(dashboardPage(orders, summary, store.mode, request.query.message || ""));
     } catch (error) {
       next(error);
     }
@@ -111,8 +140,8 @@ async function main() {
 
   app.post("/orders/:id/status", async (request, response, next) => {
     try {
-      const status = request.body.status;
-      if (!allowedStatuses.has(status)) {
+      const status = normalizeStatus(request.body.status);
+      if (!status) {
         throw new Error("Invalid order status.");
       }
 
@@ -123,15 +152,32 @@ async function main() {
     }
   });
 
-  app.use((error, _request, response, _next) => {
+  app.use((error, request, response, _next) => {
     console.error(error);
-    response.status(500).send("FuelUp hit an unexpected error. Check server logs for details.");
+    const status = error.statusCode || 500;
+    response.status(status).send(
+      status >= 500
+        ? "FuelUp hit an unexpected error. Check server logs for details."
+        : error.message
+    );
   });
 
-  const port = process.env.PORT || 3000;
-  app.listen(port, () => {
-    console.log(`FuelUp POC running on port ${port} using ${store.mode} store.`);
+  const server = app.listen(config.port, () => {
+    console.log(`FuelUp running on port ${config.port} using ${store.mode} store.`);
   });
+
+  async function shutdown(signal) {
+    console.log(`${signal} received. Shutting down FuelUp.`);
+    server.close(async () => {
+      if (store.pool) {
+        await store.pool.end();
+      }
+      process.exit(0);
+    });
+  }
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 main().catch((error) => {

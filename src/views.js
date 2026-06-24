@@ -13,54 +13,79 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function formatQuantity(value) {
+  return Number(value || 0).toLocaleString();
+}
+
 function layout({ title, body, storeMode }) {
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="FuelUp connects downstream oil and gas outlets with buyers for product availability, order reservation, and outlet fulfillment.">
     <title>${escapeHtml(title)} | FuelUp</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="/">FuelUp</a>
-      <nav>
+      <a class="brand" href="/" aria-label="FuelUp home">
+        <span class="brand-mark">F</span>
+        <span>FuelUp</span>
+      </a>
+      <nav aria-label="Primary navigation">
         <a href="/">Marketplace</a>
-        <a href="/dashboard">Outlet dashboard</a>
+        <a href="/dashboard">Operations</a>
+        <a href="/readiness">Readiness</a>
       </nav>
     </header>
     <main>
       ${body}
     </main>
     <footer>
-      <span>POC mode: ${escapeHtml(storeMode)}</span>
-      <span>Render + PostgreSQL ready</span>
+      <span>FuelUp trading platform</span>
+      <span>Runtime: ${escapeHtml(storeMode)}</span>
     </footer>
   </body>
 </html>`;
 }
 
 function marketplacePage(products, storeMode) {
+  const openOutlets = new Set(products.filter((item) => item.is_open).map((item) => item.outlet_id)).size;
+  const organizations = new Set(products.map((item) => item.organization_name)).size;
+  const productCount = products.length;
+
   const cards = products
-    .map(
-      (product) => `
-        <article class="card product-card">
-          <div>
-            <p class="eyebrow">${escapeHtml(product.organization_name)}</p>
-            <h2>${escapeHtml(product.name)}</h2>
-            <p>${escapeHtml(product.outlet_name)} · ${escapeHtml(product.city)}</p>
-            <p class="muted">${escapeHtml(product.address)}</p>
+    .map((product) => {
+      const availabilityClass = Number(product.available_quantity) > 5000 ? "good" : "watch";
+      return `
+        <article class="listing-card">
+          <div class="listing-head">
+            <div>
+              <p class="eyebrow">${escapeHtml(product.organization_name)}</p>
+              <h2>${escapeHtml(product.name)}</h2>
+            </div>
+            <span class="pill ${product.is_open ? "success" : "muted-pill"}">${product.is_open ? "Open" : "Closed"}</span>
           </div>
-          <dl class="facts">
-            <div><dt>Price</dt><dd>${currency.format(product.price)} / ${escapeHtml(product.unit)}</dd></div>
-            <div><dt>Available</dt><dd>${Number(product.available_quantity).toLocaleString()} ${escapeHtml(product.unit)}</dd></div>
-            <div><dt>Status</dt><dd>${product.is_open ? "Open" : "Closed"}</dd></div>
+          <p class="station">${escapeHtml(product.outlet_name)}</p>
+          <p class="muted">${escapeHtml(product.address)}, ${escapeHtml(product.city)}</p>
+          <dl class="market-facts">
+            <div>
+              <dt>Live price</dt>
+              <dd>${currency.format(product.price)} <span>/ ${escapeHtml(product.unit)}</span></dd>
+            </div>
+            <div>
+              <dt>Available stock</dt>
+              <dd class="${availabilityClass}">${formatQuantity(product.available_quantity)} <span>${escapeHtml(product.unit)}</span></dd>
+            </div>
           </dl>
-          <a class="button" href="/orders/new?outletId=${product.outlet_id}&productId=${product.id}">Place order</a>
+          <div class="listing-actions">
+            <a class="button" href="/orders/new?outletId=${product.outlet_id}&productId=${product.id}">Reserve order</a>
+            <span>${escapeHtml(product.phone)}</span>
+          </div>
         </article>
-      `
-    )
+      `;
+    })
     .join("");
 
   return layout({
@@ -68,24 +93,45 @@ function marketplacePage(products, storeMode) {
     storeMode,
     body: `
       <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Verified downstream trading</p>
+          <h1>Fuel ordering infrastructure for buyers, outlets, and operators.</h1>
+          <p>FuelUp gives buyers a clear ordering path while station operators manage product availability, confirmations, and fulfillment from one control surface.</p>
+          <div class="hero-actions">
+            <a class="button" href="#marketplace">Browse products</a>
+            <a class="button secondary" href="/dashboard">Open operations</a>
+          </div>
+        </div>
+        <aside class="command-panel" aria-label="Marketplace snapshot">
+          <div class="panel-top">
+            <span class="signal"></span>
+            <strong>Live marketplace</strong>
+          </div>
+          <dl>
+            <div><dt>Organizations</dt><dd>${organizations}</dd></div>
+            <div><dt>Open outlets</dt><dd>${openOutlets}</dd></div>
+            <div><dt>Products listed</dt><dd>${productCount}</dd></div>
+          </dl>
+        </aside>
+      </section>
+
+      <section class="trust-strip" aria-label="Platform capabilities">
+        <div><strong>Buyer orders</strong><span>Pickup or delivery request</span></div>
+        <div><strong>Outlet control</strong><span>Accept, prepare, complete</span></div>
+        <div><strong>Stock guard</strong><span>Orders cannot exceed availability</span></div>
+        <div><strong>Postgres ready</strong><span>Render-backed persistence</span></div>
+      </section>
+
+      <section id="marketplace" class="section-heading">
         <div>
-          <p class="eyebrow">Downstream trading POC</p>
-          <h1>Order fuel and station products from verified outlets.</h1>
-          <p>FuelUp connects buyers with oil and gas organizations that operate one or many filling station outlets.</p>
+          <p class="eyebrow">Marketplace</p>
+          <h2>Available products</h2>
         </div>
-        <div class="hero-panel">
-          <strong>POC workflow</strong>
-          <span>Browse availability</span>
-          <span>Reserve product</span>
-          <span>Outlet confirms order</span>
-        </div>
+        <p>${productCount} listings across ${openOutlets} open outlets</p>
       </section>
-      <section class="section-heading">
-        <h2>Available Products</h2>
-        <p>${products.length} live demo listings</p>
-      </section>
+
       <section class="grid">
-        ${cards}
+        ${cards || `<p class="empty-panel">No products are currently listed.</p>`}
       </section>
     `
   });
@@ -96,59 +142,73 @@ function orderFormPage(context, storeMode, error = "") {
     title: "Place Order",
     storeMode,
     body: `
-      <section class="narrow">
+      <section class="form-shell">
         <a class="backlink" href="/">Back to marketplace</a>
-        <h1>Place Order</h1>
-        ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
-        <div class="summary">
-          <strong>${escapeHtml(context.name)}</strong>
-          <span>${escapeHtml(context.outlet_name)} · ${escapeHtml(context.organization_name)}</span>
-          <span>${currency.format(context.price)} / ${escapeHtml(context.unit)} · ${Number(context.available_quantity).toLocaleString()} ${escapeHtml(context.unit)} available</span>
+        <div class="form-grid">
+          <aside class="order-context">
+            <p class="eyebrow">Order reservation</p>
+            <h1>${escapeHtml(context.name)}</h1>
+            <p>${escapeHtml(context.outlet_name)} by ${escapeHtml(context.organization_name)}</p>
+            <dl>
+              <div><dt>Price</dt><dd>${currency.format(context.price)} / ${escapeHtml(context.unit)}</dd></div>
+              <div><dt>Available</dt><dd>${formatQuantity(context.available_quantity)} ${escapeHtml(context.unit)}</dd></div>
+              <div><dt>Outlet phone</dt><dd>${escapeHtml(context.phone)}</dd></div>
+            </dl>
+          </aside>
+
+          <section class="form-card">
+            <h2>Buyer details</h2>
+            ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
+            <form method="post" action="/orders">
+              <input type="hidden" name="outletId" value="${context.outlet_id}">
+              <input type="hidden" name="productId" value="${context.id}">
+
+              <div class="field-row">
+                <label>
+                  Buyer name
+                  <input required name="buyerName" maxlength="120" placeholder="Aganran Logistics">
+                </label>
+
+                <label>
+                  Phone
+                  <input required name="buyerPhone" maxlength="40" placeholder="+234...">
+                </label>
+              </div>
+
+              <label>
+                Email
+                <input required type="email" name="buyerEmail" maxlength="160" placeholder="buyer@example.com">
+              </label>
+
+              <div class="field-row">
+                <label>
+                  Quantity
+                  <input required type="number" name="quantity" min="1" step="0.01" placeholder="1000">
+                </label>
+
+                <label>
+                  Fulfillment
+                  <select name="fulfillmentMethod">
+                    <option value="pickup">Pickup</option>
+                    <option value="delivery">Delivery request</option>
+                  </select>
+                </label>
+              </div>
+
+              <label>
+                Delivery address
+                <textarea name="deliveryAddress" maxlength="400" placeholder="Required if delivery is requested"></textarea>
+              </label>
+
+              <label>
+                Notes
+                <textarea name="notes" maxlength="500" placeholder="Vehicle details, loading window, invoice preference"></textarea>
+              </label>
+
+              <button class="button wide" type="submit">Submit reservation</button>
+            </form>
+          </section>
         </div>
-        <form method="post" action="/orders">
-          <input type="hidden" name="outletId" value="${context.outlet_id}">
-          <input type="hidden" name="productId" value="${context.id}">
-
-          <label>
-            Buyer name
-            <input required name="buyerName" placeholder="Aganran Logistics">
-          </label>
-
-          <label>
-            Phone
-            <input required name="buyerPhone" placeholder="+234...">
-          </label>
-
-          <label>
-            Email
-            <input required type="email" name="buyerEmail" placeholder="buyer@example.com">
-          </label>
-
-          <label>
-            Quantity
-            <input required type="number" name="quantity" min="1" step="0.01" placeholder="1000">
-          </label>
-
-          <label>
-            Fulfillment
-            <select name="fulfillmentMethod">
-              <option value="pickup">Pickup</option>
-              <option value="delivery">Delivery request</option>
-            </select>
-          </label>
-
-          <label>
-            Delivery address
-            <textarea name="deliveryAddress" placeholder="Required if delivery is requested"></textarea>
-          </label>
-
-          <label>
-            Notes
-            <textarea name="notes" placeholder="Vehicle details, loading window, invoice preference"></textarea>
-          </label>
-
-          <button class="button" type="submit">Submit order</button>
-        </form>
       </section>
     `
   });
@@ -159,37 +219,65 @@ function orderSuccessPage(order, storeMode) {
     title: "Order Submitted",
     storeMode,
     body: `
-      <section class="narrow success">
-        <h1>Order submitted</h1>
-        <p>Your order is now pending outlet confirmation.</p>
-        <div class="summary">
-          <strong>Order #${escapeHtml(order.id)}</strong>
+      <section class="success-panel">
+        <p class="eyebrow">Reservation received</p>
+        <h1>Order submitted for outlet confirmation.</h1>
+        <div class="summary-card">
+          <strong>${escapeHtml(order.order_reference || `Order #${order.id}`)}</strong>
           <span>Status: ${escapeHtml(order.status || "pending")}</span>
         </div>
-        <a class="button" href="/dashboard">View dashboard</a>
+        <div class="hero-actions">
+          <a class="button" href="/dashboard">View operations dashboard</a>
+          <a class="button secondary" href="/">Back to marketplace</a>
+        </div>
       </section>
     `
   });
 }
 
-function dashboardPage(orders, storeMode, message = "") {
+function dashboardPage(orders, summary, storeMode, message = "") {
+  const metricCards = [
+    ["Total orders", summary.totalOrders || 0],
+    ["Pending", summary.pendingOrders || 0],
+    ["Completed", summary.completedOrders || 0],
+    ["Order value", currency.format(summary.totalValue || 0)]
+  ]
+    .map(
+      ([label, value]) => `
+        <article class="metric-card">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </article>
+      `
+    )
+    .join("");
+
   const orderRows = orders.length
     ? orders
         .map(
           (order) => `
             <tr>
-              <td>#${escapeHtml(order.id)}</td>
+              <td>
+                <strong>${escapeHtml(order.order_reference || `#${order.id}`)}</strong>
+                <span>${new Date(order.created_at).toLocaleString()}</span>
+              </td>
               <td>
                 <strong>${escapeHtml(order.buyer_name)}</strong>
                 <span>${escapeHtml(order.buyer_phone)}</span>
               </td>
-              <td>${escapeHtml(order.product_name)}</td>
-              <td>${Number(order.quantity).toLocaleString()} ${escapeHtml(order.unit)}</td>
-              <td>${escapeHtml(order.outlet_name)}</td>
-              <td><span class="status">${escapeHtml(order.status)}</span></td>
+              <td>
+                <strong>${escapeHtml(order.product_name)}</strong>
+                <span>${formatQuantity(order.quantity)} ${escapeHtml(order.unit)}</span>
+              </td>
+              <td>
+                <strong>${escapeHtml(order.outlet_name)}</strong>
+                <span>${escapeHtml(order.organization_name)}</span>
+              </td>
+              <td>${currency.format(order.total_amount || Number(order.quantity) * Number(order.price || 0))}</td>
+              <td><span class="status status-${escapeHtml(order.status)}">${escapeHtml(order.status)}</span></td>
               <td>
                 <form class="inline-form" method="post" action="/orders/${order.id}/status">
-                  <select name="status">
+                  <select name="status" aria-label="Order status">
                     ${["pending", "accepted", "ready", "completed", "cancelled"]
                       .map(
                         (status) =>
@@ -207,17 +295,24 @@ function dashboardPage(orders, storeMode, message = "") {
     : `<tr><td colspan="7" class="empty">No orders yet. Place one from the marketplace to test the flow.</td></tr>`;
 
   return layout({
-    title: "Outlet Dashboard",
+    title: "Operations Dashboard",
     storeMode,
     body: `
-      <section class="section-heading">
+      <section class="dashboard-head">
         <div>
           <p class="eyebrow">Outlet operations</p>
-          <h1>Order Dashboard</h1>
+          <h1>Order control center</h1>
+          <p>Monitor incoming buyer reservations, move orders through fulfillment, and keep station teams aligned.</p>
         </div>
-        <a class="button secondary" href="/">New buyer order</a>
+        <a class="button secondary" href="/">Create buyer order</a>
       </section>
+
+      <section class="metrics-grid">
+        ${metricCards}
+      </section>
+
       ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
+
       <section class="table-wrap">
         <table>
           <thead>
@@ -225,8 +320,8 @@ function dashboardPage(orders, storeMode, message = "") {
               <th>Order</th>
               <th>Buyer</th>
               <th>Product</th>
-              <th>Quantity</th>
               <th>Outlet</th>
+              <th>Value</th>
               <th>Status</th>
               <th>Action</th>
             </tr>

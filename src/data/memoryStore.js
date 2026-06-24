@@ -47,6 +47,10 @@ const products = [
 
 const orders = [];
 
+function orderReference(id) {
+  return `FUP-${String(id).padStart(6, "0")}`;
+}
+
 function withOutletAndOrganization(product) {
   const outlet = outlets.find((item) => item.id === product.outlet_id);
   return {
@@ -103,6 +107,7 @@ function createMemoryStore() {
 
       const order = {
         id: orders.length + 1,
+        order_reference: orderReference(orders.length + 1),
         outlet_id: input.outletId,
         product_id: input.productId,
         buyer_name: input.buyerName,
@@ -112,8 +117,11 @@ function createMemoryStore() {
         fulfillment_method: input.fulfillmentMethod,
         delivery_address: input.deliveryAddress || "",
         notes: input.notes || "",
+        unit_price: Number(product.price),
+        total_amount: Number(product.price) * Number(input.quantity),
         status: "pending",
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
 
       orders.push(order);
@@ -124,12 +132,21 @@ function createMemoryStore() {
       return orders.slice().reverse().map(withOrderDetails);
     },
 
+    async getDashboardSummary() {
+      const totalOrders = orders.length;
+      const pendingOrders = orders.filter((item) => item.status === "pending").length;
+      const completedOrders = orders.filter((item) => item.status === "completed").length;
+      const totalValue = orders.reduce((sum, item) => sum + Number(item.total_amount || 0), 0);
+      return { totalOrders, pendingOrders, completedOrders, totalValue };
+    },
+
     async updateOrderStatus(orderId, status) {
       const order = orders.find((item) => item.id === orderId);
       if (!order) {
         throw new Error("Order not found.");
       }
       order.status = status;
+      order.updated_at = new Date().toISOString();
       return withOrderDetails(order);
     }
   };
