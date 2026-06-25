@@ -56,6 +56,17 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS audit_events (
+  id SERIAL PRIMARY KEY,
+  actor_user_id INTEGER REFERENCES users(id),
+  actor_email TEXT,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER,
+  action TEXT NOT NULL,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_reference TEXT UNIQUE;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS unit_price NUMERIC(12, 2);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(14, 2);
@@ -66,3 +77,5 @@ CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_outlet_id ON orders(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_entity ON audit_events(entity_type, entity_id);

@@ -18,9 +18,10 @@ const { createConfig } = require("./config");
 const { initDatabase } = require("./db/init");
 const { createMemoryStore } = require("./data/memoryStore");
 const { createPostgresStore } = require("./data/postgresStore");
-const { normalizeOrderInput, normalizeStatus } = require("./validation");
+const { normalizeInventoryInput, normalizeOrderInput, normalizeStatus } = require("./validation");
 const {
   dashboardPage,
+  inventoryPage,
   loginPage,
   marketplacePage,
   orderFormPage,
@@ -197,14 +198,54 @@ async function main() {
     try {
       const orders = await store.listOrders();
       const summary = await store.getDashboardSummary();
+      const auditEvents = await store.listAuditEvents(8);
       response.send(dashboardPage({
         orders,
         summary,
+        auditEvents,
         storeMode: store.mode,
         message: request.query.message || "",
         user: request.user,
         csrfToken: getCsrfToken(request, config)
       }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/inventory", requireAuth, async (request, response, next) => {
+    try {
+      const products = await store.listInventory();
+      const auditEvents = await store.listAuditEvents(8);
+      response.send(inventoryPage({
+        products,
+        auditEvents,
+        storeMode: store.mode,
+        message: request.query.message || "",
+        error: request.query.error || "",
+        user: request.user,
+        csrfToken: getCsrfToken(request, config)
+      }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/products/:id/inventory", requireAuth, requireCsrf(config), async (request, response, next) => {
+    try {
+      const productId = Number(request.params.id);
+      if (!Number.isInteger(productId) || productId < 1) {
+        throw new Error("Invalid product.");
+      }
+
+      const { input, errors } = normalizeInventoryInput(request.body);
+      if (errors.length > 0) {
+        response.redirect(`/inventory?error=${encodeURIComponent(errors.join(" "))}`);
+        return;
+      }
+
+      await store.updateInventory(productId, input, request.user);
+      response.redirect("/inventory?message=Inventory%20updated");
     } catch (error) {
       next(error);
     }
@@ -217,7 +258,7 @@ async function main() {
         throw new Error("Invalid order status.");
       }
 
-      await store.updateOrderStatus(Number(request.params.id), status);
+      await store.updateOrderStatus(Number(request.params.id), status, request.user);
       response.redirect("/dashboard?message=Order%20status%20updated");
     } catch (error) {
       next(error);

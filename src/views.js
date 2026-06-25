@@ -36,6 +36,7 @@ function layout({ title, body, storeMode }) {
       <nav aria-label="Primary navigation">
         <a href="/">Marketplace</a>
         <a href="/dashboard">Operations</a>
+        <a href="/inventory">Inventory</a>
         <a href="/login">Login</a>
       </nav>
     </header>
@@ -265,7 +266,32 @@ function orderSuccessPage(order, storeMode) {
   });
 }
 
-function dashboardPage({ orders, summary, storeMode, message = "", user, csrfToken }) {
+function auditFeed(events) {
+  if (!events || events.length === 0) {
+    return `<p class="empty-panel compact">No audit events yet.</p>`;
+  }
+
+  return `
+    <ol class="audit-list">
+      ${events
+        .map((event) => {
+          const details = event.details || {};
+          const label = event.action === "inventory.updated"
+            ? `Inventory updated for product #${event.entity_id}`
+            : `Order status changed to ${escapeHtml(details.to || "updated")}`;
+          return `
+            <li>
+              <strong>${label}</strong>
+              <span>${escapeHtml(event.actor_email || "system")} · ${new Date(event.created_at).toLocaleString()}</span>
+            </li>
+          `;
+        })
+        .join("")}
+    </ol>
+  `;
+}
+
+function dashboardPage({ orders, summary, auditEvents, storeMode, message = "", user, csrfToken }) {
   const metricCards = [
     ["Total orders", summary.totalOrders || 0],
     ["Pending", summary.pendingOrders || 0],
@@ -337,6 +363,7 @@ function dashboardPage({ orders, summary, storeMode, message = "", user, csrfTok
         </div>
         <div class="hero-actions">
           <a class="button secondary" href="/">Create buyer order</a>
+          <a class="button secondary" href="/inventory">Manage inventory</a>
           <form class="logout-form" method="post" action="/logout">
             <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
             <button class="button ghost" type="submit">Sign out</button>
@@ -350,21 +377,102 @@ function dashboardPage({ orders, summary, storeMode, message = "", user, csrfTok
 
       ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
 
-      <section class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Order</th>
-              <th>Buyer</th>
-              <th>Product</th>
-              <th>Outlet</th>
-              <th>Value</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>${orderRows}</tbody>
-        </table>
+      <section class="ops-grid">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Buyer</th>
+                <th>Product</th>
+                <th>Outlet</th>
+                <th>Value</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>${orderRows}</tbody>
+          </table>
+        </div>
+        <aside class="activity-panel">
+          <p class="eyebrow">Recent audit trail</p>
+          <h2>Activity</h2>
+          ${auditFeed(auditEvents)}
+        </aside>
+      </section>
+    `
+  });
+}
+
+function inventoryPage({ products, auditEvents, storeMode, message = "", error = "", user, csrfToken }) {
+  const rows = products.length
+    ? products.map((product) => `
+        <tr>
+          <td>
+            <strong>${escapeHtml(product.name)}</strong>
+            <span>${escapeHtml(product.organization_name)} · ${escapeHtml(product.outlet_name)}</span>
+          </td>
+          <td>${escapeHtml(product.city)}</td>
+          <td>${escapeHtml(product.unit)}</td>
+          <td>
+            <form class="inventory-form" method="post" action="/products/${product.id}/inventory">
+              <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+              <label>
+                Price
+                <input required type="number" name="price" min="1" step="0.01" value="${escapeHtml(product.price)}">
+              </label>
+              <label>
+                Stock
+                <input required type="number" name="availableQuantity" min="0" step="0.01" value="${escapeHtml(product.available_quantity)}">
+              </label>
+              <button type="submit">Save</button>
+            </form>
+          </td>
+        </tr>
+      `).join("")
+    : `<tr><td colspan="4" class="empty">No inventory records found.</td></tr>`;
+
+  return layout({
+    title: "Inventory",
+    storeMode,
+    body: `
+      <section class="dashboard-head">
+        <div>
+          <p class="eyebrow">Inventory control</p>
+          <h1>Price and stock management</h1>
+          <p>Signed in as ${escapeHtml(user.email)}. Update station-level availability and pricing with audit history.</p>
+        </div>
+        <div class="hero-actions">
+          <a class="button secondary" href="/dashboard">Back to operations</a>
+          <form class="logout-form" method="post" action="/logout">
+            <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+            <button class="button ghost" type="submit">Sign out</button>
+          </form>
+        </div>
+      </section>
+
+      ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
+      ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
+
+      <section class="ops-grid">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>City</th>
+                <th>Unit</th>
+                <th>Update</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <aside class="activity-panel">
+          <p class="eyebrow">Recent audit trail</p>
+          <h2>Activity</h2>
+          ${auditFeed(auditEvents)}
+        </aside>
       </section>
     `
   });
@@ -372,6 +480,7 @@ function dashboardPage({ orders, summary, storeMode, message = "", user, csrfTok
 
 module.exports = {
   dashboardPage,
+  inventoryPage,
   loginPage,
   marketplacePage,
   orderFormPage,

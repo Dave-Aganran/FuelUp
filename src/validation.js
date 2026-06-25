@@ -67,8 +67,31 @@ function normalizeStatus(value) {
   return status;
 }
 
+function normalizeInventoryInput(body) {
+  const price = Number(body.price);
+  const availableQuantity = Number(body.availableQuantity);
+  const input = { price, availableQuantity };
+  const errors = [];
+
+  if (!Number.isFinite(price) || price <= 0) {
+    errors.push("Price must be greater than zero.");
+  }
+  if (Number.isFinite(price) && price > 100000000) {
+    errors.push("Price is above the allowed limit.");
+  }
+  if (!Number.isFinite(availableQuantity) || availableQuantity < 0) {
+    errors.push("Available quantity cannot be negative.");
+  }
+  if (Number.isFinite(availableQuantity) && availableQuantity > 100000000) {
+    errors.push("Available quantity is above the allowed limit.");
+  }
+
+  return { input, errors };
+}
+
 module.exports = {
   allowedStatuses,
+  normalizeInventoryInput,
   normalizeOrderInput,
   normalizeStatus
 };

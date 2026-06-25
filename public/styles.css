@@ -548,6 +548,50 @@ textarea {
   overflow-x: auto;
 }
 
+.ops-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.activity-panel {
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 32px rgba(20, 40, 28, 0.06);
+}
+
+.activity-panel h2 {
+  margin: 0 0 12px;
+}
+
+.audit-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.audit-list li {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.audit-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.audit-list span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 table {
   width: 100%;
   min-width: 980px;
@@ -573,6 +617,26 @@ th {
   display: flex;
   gap: 8px;
   margin: 0;
+}
+
+.inventory-form {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin: 0;
+}
+
+.inventory-form label {
+  font-size: 0.82rem;
+}
+
+.inventory-form input {
+  min-height: 38px;
+}
+
+.inventory-form button {
+  min-height: 38px;
 }
 
 .logout-form {
@@ -601,6 +665,10 @@ th {
   border-radius: 8px;
 }
 
+.empty-panel.compact {
+  padding: 16px;
+}
+
 footer {
   display: flex;
   justify-content: space-between;
@@ -614,6 +682,10 @@ footer {
 @media (max-width: 900px) {
   .hero,
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-grid {
     grid-template-columns: 1fr;
   }
 
@@ -648,7 +720,8 @@ footer {
 
   .trust-strip,
   .metrics-grid,
-  .field-row {
+  .field-row,
+  .inventory-form {
     grid-template-columns: 1fr;
   }
 

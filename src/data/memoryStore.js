@@ -47,6 +47,7 @@ const products = [
 
 const orders = [];
 const users = [];
+const auditEvents = [];
 
 function orderReference(id) {
   return `FUP-${String(id).padStart(6, "0")}`;
@@ -79,6 +80,21 @@ function withOrderDetails(order) {
 }
 
 function createMemoryStore() {
+  function recordAuditEvent(input) {
+    const event = {
+      id: auditEvents.length + 1,
+      actor_user_id: input.actor?.id || null,
+      actor_email: input.actor?.email || "",
+      entity_type: input.entityType,
+      entity_id: input.entityId,
+      action: input.action,
+      details: input.details || {},
+      created_at: new Date().toISOString()
+    };
+    auditEvents.push(event);
+    return event;
+  }
+
   return {
     mode: "memory",
 
@@ -133,6 +149,35 @@ function createMemoryStore() {
       return orders.slice().reverse().map(withOrderDetails);
     },
 
+    async listInventory() {
+      return products.map(withOutletAndOrganization);
+    },
+
+    async updateInventory(productId, input, actor) {
+      const product = products.find((item) => item.id === productId);
+      if (!product) {
+        throw new Error("Product not found.");
+      }
+
+      const before = {
+        price: Number(product.price),
+        available_quantity: Number(product.available_quantity)
+      };
+
+      product.price = Number(input.price);
+      product.available_quantity = Number(input.availableQuantity);
+
+      recordAuditEvent({
+        actor,
+        entityType: "product",
+        entityId: product.id,
+        action: "inventory.updated",
+        details: { before, after: { price: product.price, available_quantity: product.available_quantity } }
+      });
+
+      return withOutletAndOrganization(product);
+    },
+
     async getDashboardSummary() {
       const totalOrders = orders.length;
       const pendingOrders = orders.filter((item) => item.status === "pending").length;
@@ -176,13 +221,25 @@ function createMemoryStore() {
       return user;
     },
 
-    async updateOrderStatus(orderId, status) {
+    async listAuditEvents(limit = 12) {
+      return auditEvents.slice().reverse().slice(0, limit);
+    },
+
+    async updateOrderStatus(orderId, status, actor) {
       const order = orders.find((item) => item.id === orderId);
       if (!order) {
         throw new Error("Order not found.");
       }
+      const previousStatus = order.status;
       order.status = status;
       order.updated_at = new Date().toISOString();
+      recordAuditEvent({
+        actor,
+        entityType: "order",
+        entityId: order.id,
+        action: "order.status_updated",
+        details: { from: previousStatus, to: status, order_reference: order.order_reference }
+      });
       return withOrderDetails(order);
     }
   };

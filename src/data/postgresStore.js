@@ -157,6 +157,101 @@ function createPostgresStore(pool) {
       return rows;
     },
 
+    async listInventory() {
+      const { rows } = await pool.query(`
+        SELECT
+          p.id,
+          p.outlet_id,
+          p.name,
+          p.unit,
+          p.price::float,
+          p.available_quantity::float,
+          p.updated_at,
+          o.name AS outlet_name,
+          o.city,
+          o.address,
+          o.phone,
+          o.is_open,
+          org.name AS organization_name
+        FROM products p
+        JOIN outlets o ON o.id = p.outlet_id
+        JOIN organizations org ON org.id = o.organization_id
+        ORDER BY org.name, o.name, p.name
+      `);
+      return rows;
+    },
+
+    async recordAuditEvent(input) {
+      const { rows } = await pool.query(
+        `
+          INSERT INTO audit_events (actor_user_id, actor_email, entity_type, entity_id, action, details)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING *
+        `,
+        [
+          input.actor?.id || null,
+          input.actor?.email || null,
+          input.entityType,
+          input.entityId || null,
+          input.action,
+          JSON.stringify(input.details || {})
+        ]
+      );
+      return rows[0];
+    },
+
+    async updateInventory(productId, input, actor) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const current = await client.query(
+          "SELECT id, price::float, available_quantity::float FROM products WHERE id = $1 FOR UPDATE",
+          [productId]
+        );
+        if (current.rowCount === 0) {
+          throw new Error("Product not found.");
+        }
+
+        const before = current.rows[0];
+        const updated = await client.query(
+          `
+            UPDATE products
+            SET price = $1, available_quantity = $2, updated_at = NOW()
+            WHERE id = $3
+            RETURNING id, price::float, available_quantity::float, updated_at
+          `,
+          [input.price, input.availableQuantity, productId]
+        );
+
+        await client.query(
+          `
+            INSERT INTO audit_events (actor_user_id, actor_email, entity_type, entity_id, action, details)
+            VALUES ($1, $2, 'product', $3, 'inventory.updated', $4)
+          `,
+          [
+            actor?.id || null,
+            actor?.email || null,
+            productId,
+            JSON.stringify({
+              before: { price: before.price, available_quantity: before.available_quantity },
+              after: {
+                price: updated.rows[0].price,
+                available_quantity: updated.rows[0].available_quantity
+              }
+            })
+          ]
+        );
+
+        await client.query("COMMIT");
+        return updated.rows[0];
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
     async getDashboardSummary() {
       const { rows } = await pool.query(`
         SELECT
@@ -203,15 +298,60 @@ function createPostgresStore(pool) {
       return rows[0];
     },
 
-    async updateOrderStatus(orderId, status) {
+    async listAuditEvents(limit = 12) {
       const { rows } = await pool.query(
-        "UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
-        [status, orderId]
+        `
+          SELECT id, actor_email, entity_type, entity_id, action, details, created_at
+          FROM audit_events
+          ORDER BY created_at DESC
+          LIMIT $1
+        `,
+        [limit]
       );
-      if (rows.length === 0) {
-        throw new Error("Order not found.");
+      return rows;
+    },
+
+    async updateOrderStatus(orderId, status, actor) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const current = await client.query("SELECT id, order_reference, status FROM orders WHERE id = $1 FOR UPDATE", [
+          orderId
+        ]);
+        if (current.rowCount === 0) {
+          throw new Error("Order not found.");
+        }
+
+        const { rows } = await client.query(
+          "UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+          [status, orderId]
+        );
+
+        await client.query(
+          `
+            INSERT INTO audit_events (actor_user_id, actor_email, entity_type, entity_id, action, details)
+            VALUES ($1, $2, 'order', $3, 'order.status_updated', $4)
+          `,
+          [
+            actor?.id || null,
+            actor?.email || null,
+            orderId,
+            JSON.stringify({
+              from: current.rows[0].status,
+              to: status,
+              order_reference: current.rows[0].order_reference
+            })
+          ]
+        );
+
+        await client.query("COMMIT");
+        return rows[0];
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
       }
-      return rows[0];
     }
   };
 }

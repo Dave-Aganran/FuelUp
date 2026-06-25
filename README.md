@@ -18,6 +18,8 @@ FuelUp is a trading and ordering platform that connects buyers with downstream o
 - Operator login for operations dashboard
 - Signed HTTP-only auth cookies
 - CSRF protection for operator state changes
+- Protected inventory price and stock updates
+- Audit trail for order status and inventory changes
 - Production-oriented Render configuration
 
 ## Local Run
@@ -56,6 +58,7 @@ The app creates or updates its database tables and seed data automatically on st
 - `/` - buyer marketplace
 - `/orders/new?outletId=1&productId=1` - order form
 - `/dashboard` - outlet/admin order board
+- `/inventory` - protected operator inventory controls
 - `/login` - operator login
 - `/health` - Render health check
 - `/readiness` - database readiness check
@@ -85,6 +88,8 @@ Completed baseline:
 - Password-hashed operator login
 - Protected operations dashboard
 - CSRF protection for status updates and logout
+- Audited status and inventory changes
+- Protected price and stock controls
 - Database indexes for common operational paths
 - Graceful shutdown
 - Health and readiness checks
@@ -96,8 +101,6 @@ Remaining production blockers:
 - Multi-user invitation and password reset flow
 - Organization and outlet onboarding/verification workflow
 - Payment collection and settlement reconciliation
-- Audit logs for order and inventory changes
-- Stock adjustment controls for station staff
 - Notification channels for buyers and outlets
 - Backups, observability, and incident response procedures
 - Automated tests in CI
