@@ -141,6 +141,10 @@ function createPostgresStore(pool) {
           ord.unit_price::float,
           ord.total_amount::float,
           ord.payment_status,
+          ord.payment_provider,
+          ord.payment_reference,
+          ord.paid_at,
+          ord.payment_payload,
           ord.cancellation_requested,
           ord.cancellation_reason,
           ord.status,
@@ -401,6 +405,10 @@ function createPostgresStore(pool) {
             ord.unit_price::float,
             ord.total_amount::float,
             ord.payment_status,
+            ord.payment_provider,
+            ord.payment_reference,
+            ord.paid_at,
+            ord.payment_payload,
             ord.cancellation_requested,
             ord.cancellation_reason,
             ord.status,
@@ -477,6 +485,67 @@ function createPostgresStore(pool) {
       } finally {
         client.release();
       }
+    },
+
+    async prepareOrderPayment(reference, buyerEmail, payment) {
+      const { rows } = await pool.query(
+        `
+          UPDATE orders
+          SET payment_status = 'invoice_sent',
+              payment_provider = 'paystack',
+              payment_reference = $3,
+              payment_payload = $4,
+              updated_at = NOW()
+          WHERE order_reference = $1 AND buyer_email = $2
+          RETURNING id, order_reference, buyer_email, payment_reference
+        `,
+        [reference, buyerEmail, payment.reference, JSON.stringify(payment.providerResponse || {})]
+      );
+      if (rows.length === 0) throw new Error("Order not found.");
+      await this.recordAuditEvent({
+        actor: { email: buyerEmail },
+        entityType: "order",
+        entityId: rows[0].id,
+        action: "order.payment_initialized",
+        details: { order_reference: reference, payment_reference: payment.reference }
+      });
+      return rows[0];
+    },
+
+    async findOrderByPaymentReference(paymentReference) {
+      const { rows } = await pool.query(
+        `
+          SELECT id, order_reference, buyer_email, total_amount::float, payment_reference, payment_status
+          FROM orders
+          WHERE payment_reference = $1
+        `,
+        [paymentReference]
+      );
+      return rows[0] || null;
+    },
+
+    async markPaymentPaid(paymentReference, payload) {
+      const { rows } = await pool.query(
+        `
+          UPDATE orders
+          SET payment_status = 'paid',
+              paid_at = NOW(),
+              payment_payload = $2,
+              updated_at = NOW()
+          WHERE payment_reference = $1
+          RETURNING id, order_reference
+        `,
+        [paymentReference, JSON.stringify(payload || {})]
+      );
+      if (rows.length === 0) throw new Error("Order not found.");
+      await this.recordAuditEvent({
+        actor: { email: "paystack" },
+        entityType: "order",
+        entityId: rows[0].id,
+        action: "order.payment_paid",
+        details: { order_reference: rows[0].order_reference, payment_reference: paymentReference }
+      });
+      return rows[0];
     },
 
     async listAuditEvents(limit = 12) {

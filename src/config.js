@@ -29,6 +29,8 @@ function createConfig() {
     cookieSecure: readBoolean("COOKIE_SECURE", nodeEnv === "production"),
     adminEmail: process.env.ADMIN_EMAIL || "",
     adminPassword: process.env.ADMIN_PASSWORD || "",
+    paystackSecretKey: process.env.PAYSTACK_SECRET_KEY || "",
+    paystackCallbackUrl: process.env.PAYSTACK_CALLBACK_URL || "",
     appName: "FuelUp"
   };
 }

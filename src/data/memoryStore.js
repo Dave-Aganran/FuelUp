@@ -137,6 +137,10 @@ function createMemoryStore() {
         unit_price: Number(product.price),
         total_amount: Number(product.price) * Number(input.quantity),
         payment_status: "unpaid",
+        payment_provider: "",
+        payment_reference: "",
+        paid_at: null,
+        payment_payload: null,
         cancellation_requested: false,
         cancellation_reason: "",
         status: "pending",
@@ -319,6 +323,48 @@ function createMemoryStore() {
         entityId: order.id,
         action: "order.payment_updated",
         details: { from: previous, to: paymentStatus, order_reference: order.order_reference }
+      });
+      return withOrderDetails(order);
+    },
+
+    async prepareOrderPayment(reference, buyerEmail, payment) {
+      const order = orders.find(
+        (item) => item.order_reference === reference && item.buyer_email === buyerEmail
+      );
+      if (!order) throw new Error("Order not found.");
+      order.payment_status = "invoice_sent";
+      order.payment_provider = "paystack";
+      order.payment_reference = payment.reference;
+      order.payment_payload = payment.providerResponse;
+      order.updated_at = new Date().toISOString();
+      recordAuditEvent({
+        actor: { email: buyerEmail },
+        entityType: "order",
+        entityId: order.id,
+        action: "order.payment_initialized",
+        details: { order_reference: order.order_reference, payment_reference: payment.reference }
+      });
+      return withOrderDetails(order);
+    },
+
+    async findOrderByPaymentReference(paymentReference) {
+      const order = orders.find((item) => item.payment_reference === paymentReference);
+      return order ? withOrderDetails(order) : null;
+    },
+
+    async markPaymentPaid(paymentReference, payload) {
+      const order = orders.find((item) => item.payment_reference === paymentReference);
+      if (!order) throw new Error("Order not found.");
+      order.payment_status = "paid";
+      order.paid_at = new Date().toISOString();
+      order.payment_payload = payload;
+      order.updated_at = new Date().toISOString();
+      recordAuditEvent({
+        actor: { email: "paystack" },
+        entityType: "order",
+        entityId: order.id,
+        action: "order.payment_paid",
+        details: { order_reference: order.order_reference, payment_reference: paymentReference }
       });
       return withOrderDetails(order);
     },

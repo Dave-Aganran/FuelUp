@@ -8,7 +8,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "db:init": "node src/db/init.js",
-    "check": "node --check src/server.js && node --check src/views.js && node --check src/data/memoryStore.js && node --check src/data/postgresStore.js && node --check src/validation.js && node --check src/config.js && node --check src/auth.js && node --check src/logger.js",
+    "check": "node --check src/server.js && node --check src/views.js && node --check src/data/memoryStore.js && node --check src/data/postgresStore.js && node --check src/validation.js && node --check src/config.js && node --check src/auth.js && node --check src/logger.js && node --check src/payments/paystack.js",
     "test": "node --test"
   },
   "engines": {

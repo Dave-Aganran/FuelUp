@@ -15,6 +15,8 @@
 - `COOKIE_SECURE=true`
 - `ADMIN_EMAIL`
 - `ADMIN_PASSWORD`
+- `PAYSTACK_SECRET_KEY`
+- `PAYSTACK_CALLBACK_URL`
 - `TRUST_PROXY=true`
 
 ## Backup And Restore
@@ -34,11 +36,17 @@
 
 ## Payment Operations
 
-Current payment support tracks order payment state only:
+Current payment support integrates Paystack and tracks:
 
 - `unpaid`
 - `invoice_sent`
 - `paid`
 - `refunded`
 
-Before taking real payments, integrate a payment provider, add webhook verification, reconcile settlement IDs, and prevent manual payment changes without audit review.
+Configure this webhook URL in Paystack:
+
+```text
+https://fuelup-poc.onrender.com/webhooks/paystack
+```
+
+Use Render logs and audit events to reconcile payment initialization, callbacks, and `charge.success` webhook events.

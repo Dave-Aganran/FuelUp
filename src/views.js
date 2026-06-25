@@ -258,9 +258,15 @@ function orderSuccessPage(order, storeMode) {
         <div class="summary-card">
           <strong>${escapeHtml(order.order_reference || `Order #${order.id}`)}</strong>
           <span>Status: ${escapeHtml(order.status || "pending")}</span>
+          <span>Payment: ${escapeHtml(order.payment_status || "unpaid")}</span>
         </div>
         <div class="hero-actions">
-          <a class="button" href="/dashboard">View operations dashboard</a>
+          <form class="logout-form" method="post" action="/payments/paystack/initialize">
+            <input type="hidden" name="orderReference" value="${escapeHtml(order.order_reference || "")}">
+            <input type="hidden" name="buyerEmail" value="${escapeHtml(order.buyer_email || "")}">
+            <button class="button" type="submit">Pay with Paystack</button>
+          </form>
+          <a class="button secondary" href="/track?orderReference=${encodeURIComponent(order.order_reference || "")}&buyerEmail=${encodeURIComponent(order.buyer_email || "")}">Track order</a>
           <a class="button secondary" href="/">Back to marketplace</a>
         </div>
       </section>
@@ -296,6 +302,13 @@ function trackOrderPage({ storeMode, order = null, error = "", message = "" }) {
                 <span>Outlet: ${escapeHtml(order.outlet_name)}</span>
                 ${order.cancellation_requested ? `<span>Cancellation requested: ${escapeHtml(order.cancellation_reason || "")}</span>` : ""}
               </div>
+              ${order.payment_status === "paid" ? `<p class="notice">Payment confirmed.</p>` : `
+                <form method="post" action="/payments/paystack/initialize">
+                  <input type="hidden" name="orderReference" value="${escapeHtml(order.order_reference)}">
+                  <input type="hidden" name="buyerEmail" value="${escapeHtml(order.buyer_email)}">
+                  <button class="button wide" type="submit">Pay with Paystack</button>
+                </form>
+              `}
               <form method="post" action="/orders/cancel-request">
                 <input type="hidden" name="orderReference" value="${escapeHtml(order.order_reference)}">
                 <input type="hidden" name="buyerEmail" value="${escapeHtml(order.buyer_email)}">

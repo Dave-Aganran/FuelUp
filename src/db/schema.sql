@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS orders (
   unit_price NUMERIC(12, 2),
   total_amount NUMERIC(14, 2),
   payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'invoice_sent', 'paid', 'refunded')),
+  payment_provider TEXT,
+  payment_reference TEXT UNIQUE,
+  paid_at TIMESTAMPTZ,
+  payment_payload JSONB,
   cancellation_requested BOOLEAN NOT NULL DEFAULT FALSE,
   cancellation_reason TEXT,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'ready', 'completed', 'cancelled')),
@@ -81,6 +85,10 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_reference TEXT UNIQUE;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS unit_price NUMERIC(12, 2);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(14, 2);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_provider TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_reference TEXT UNIQUE;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_payload JSONB;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_requested BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
@@ -88,6 +96,7 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFA
 CREATE INDEX IF NOT EXISTS idx_products_outlet_id ON products(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
+CREATE INDEX IF NOT EXISTS idx_orders_payment_reference ON orders(payment_reference);
 CREATE INDEX IF NOT EXISTS idx_orders_reference ON orders(order_reference);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_outlet_id ON orders(outlet_id);

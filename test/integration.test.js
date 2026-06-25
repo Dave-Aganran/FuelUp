@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const { after, before, describe, it } = require("node:test");
 const { createApp } = require("../src/server");
 
@@ -35,6 +36,8 @@ before(async () => {
     cookieSecure: false,
     adminEmail: "ops@example.com",
     adminPassword: "StrongPass123!",
+    paystackSecretKey: "sk_test_mock",
+    paystackCallbackUrl: "",
     appName: "FuelUp"
   });
 
@@ -232,5 +235,83 @@ describe("FuelUp core flows", () => {
     });
     assert.equal(cancel.status, 200);
     assert.match(await cancel.text(), /Cancellation request sent/);
+  });
+
+  it("initializes Paystack payments and marks callback payments paid", async () => {
+    const order = await fetch(`${baseUrl}/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        outletId: "1",
+        productId: "1",
+        buyerName: "Payment Buyer Ltd",
+        buyerPhone: "+2348000000000",
+        buyerEmail: "pay@example.com",
+        quantity: "4",
+        fulfillmentMethod: "pickup",
+        deliveryAddress: "",
+        notes: "Payment test order"
+      })
+    });
+    const html = await order.text();
+    const reference = html.match(/FUP-[0-9A-Z-]+/)[0];
+
+    const init = await fetch(`${baseUrl}/payments/paystack/initialize`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ orderReference: reference, buyerEmail: "pay@example.com" })
+    });
+    assert.equal(init.status, 302);
+    const paystackReference = new URL(init.headers.get("location"), baseUrl).searchParams.get("reference");
+    assert.ok(paystackReference.startsWith(reference));
+
+    const callback = await fetch(`${baseUrl}/payments/paystack/callback?reference=${encodeURIComponent(paystackReference)}`, {
+      redirect: "manual"
+    });
+    assert.equal(callback.status, 302);
+
+    const track = await fetch(`${baseUrl}/track?orderReference=${reference}&buyerEmail=pay@example.com`);
+    assert.match(await track.text(), /Payment confirmed/);
+  });
+
+  it("accepts signed Paystack charge.success webhooks", async () => {
+    const order = await fetch(`${baseUrl}/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        outletId: "1",
+        productId: "1",
+        buyerName: "Webhook Buyer Ltd",
+        buyerPhone: "+2348000000000",
+        buyerEmail: "webhook@example.com",
+        quantity: "3",
+        fulfillmentMethod: "pickup",
+        deliveryAddress: "",
+        notes: "Webhook test order"
+      })
+    });
+    const reference = (await order.text()).match(/FUP-[0-9A-Z-]+/)[0];
+    const init = await fetch(`${baseUrl}/payments/paystack/initialize`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ orderReference: reference, buyerEmail: "webhook@example.com" })
+    });
+    const paymentReference = new URL(init.headers.get("location"), baseUrl).searchParams.get("reference");
+    const payload = JSON.stringify({
+      event: "charge.success",
+      data: { reference: paymentReference, amount: 999999999, status: "success" }
+    });
+    const signature = crypto.createHmac("sha512", "sk_test_mock").update(payload).digest("hex");
+    const webhook = await fetch(`${baseUrl}/webhooks/paystack`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-paystack-signature": signature
+      },
+      body: payload
+    });
+    assert.equal(webhook.status, 200);
   });
 });

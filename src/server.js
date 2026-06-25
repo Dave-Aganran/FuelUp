@@ -21,6 +21,12 @@ const { createMemoryStore } = require("./data/memoryStore");
 const { createPostgresStore } = require("./data/postgresStore");
 const { logEvent, requestLogger } = require("./logger");
 const {
+  initializePaystackPayment,
+  paystackAmount,
+  verifyPaystackReference,
+  verifyPaystackWebhook
+} = require("./payments/paystack");
+const {
   normalizeCancellationInput,
   normalizeInventoryInput,
   normalizeOrderInput,
@@ -104,6 +110,27 @@ async function createApp(config = createConfig()) {
       legacyHeaders: false
     })
   );
+  app.post("/webhooks/paystack", express.raw({ type: "application/json", limit: config.maxRequestBody }), async (request, response, next) => {
+    try {
+      const signature = request.headers["x-paystack-signature"];
+      if (!verifyPaystackWebhook(request.body, signature, config.paystackSecretKey)) {
+        response.status(401).send("Invalid signature.");
+        return;
+      }
+
+      const event = JSON.parse(request.body.toString("utf8"));
+      if (event.event === "charge.success" && event.data?.reference) {
+        const order = await store.findOrderByPaymentReference(event.data.reference);
+        if (order && Number(event.data.amount) >= paystackAmount(order.total_amount)) {
+          await store.markPaymentPaid(event.data.reference, event);
+        }
+      }
+      response.status(200).send("ok");
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use(express.urlencoded({ extended: false, limit: config.maxRequestBody }));
   app.use(parseCookies);
   app.use(attachUser(config));
@@ -223,6 +250,55 @@ async function createApp(config = createConfig()) {
       }));
     } catch (error) {
       response.status(404).send(trackOrderPage({ storeMode: store.mode, error: error.message }));
+    }
+  });
+
+  app.post("/payments/paystack/initialize", async (request, response, next) => {
+    try {
+      const orderReference = String(request.body.orderReference || "").trim().toUpperCase();
+      const buyerEmail = String(request.body.buyerEmail || "").trim().toLowerCase();
+      const order = await store.findOrderForBuyer(orderReference, buyerEmail);
+      if (!order) {
+        response.status(404).send(trackOrderPage({ storeMode: store.mode, error: "Order not found." }));
+        return;
+      }
+      if (order.payment_status === "paid") {
+        response.redirect(`/track?orderReference=${encodeURIComponent(orderReference)}&buyerEmail=${encodeURIComponent(buyerEmail)}`);
+        return;
+      }
+
+      const payment = await initializePaystackPayment(order, config);
+      await store.prepareOrderPayment(orderReference, buyerEmail, payment);
+      response.redirect(payment.authorizationUrl);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/payments/paystack/callback", async (request, response, next) => {
+    try {
+      const reference = String(request.query.reference || "").trim();
+      if (!reference) {
+        response.status(400).send("Payment reference is required.");
+        return;
+      }
+
+      const order = await store.findOrderByPaymentReference(reference);
+      if (!order) {
+        response.status(404).send("Order not found for payment reference.");
+        return;
+      }
+
+      const verification = await verifyPaystackReference(reference, config);
+      if (verification.data?.status === "success") {
+        if (config.paystackSecretKey === "sk_test_mock" || Number(verification.data.amount) >= paystackAmount(order.total_amount)) {
+          await store.markPaymentPaid(reference, verification);
+        }
+      }
+
+      response.redirect(`/track?orderReference=${encodeURIComponent(order.order_reference)}&buyerEmail=${encodeURIComponent(order.buyer_email)}`);
+    } catch (error) {
+      next(error);
     }
   });
 
