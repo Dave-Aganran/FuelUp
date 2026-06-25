@@ -462,6 +462,17 @@ label {
   font-weight: 750;
 }
 
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.check-row input {
+  width: auto;
+  min-height: auto;
+}
+
 input,
 select,
 textarea {
@@ -527,6 +538,13 @@ textarea {
   grid-template-columns: repeat(4, 1fr);
   gap: 14px;
   margin-bottom: 18px;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
 }
 
 .metric-card {
@@ -690,7 +708,8 @@ footer {
   }
 
   .trust-strip,
-  .metrics-grid {
+  .metrics-grid,
+  .admin-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -720,6 +739,7 @@ footer {
 
   .trust-strip,
   .metrics-grid,
+  .admin-grid,
   .field-row,
   .inventory-form {
     grid-template-columns: 1fr;

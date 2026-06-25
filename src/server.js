@@ -11,6 +11,7 @@ const {
   parseCookies,
   requireAuth,
   requireCsrf,
+  requireRole,
   setAuthCookies,
   verifyPassword
 } = require("./auth");
@@ -18,14 +19,28 @@ const { createConfig } = require("./config");
 const { initDatabase } = require("./db/init");
 const { createMemoryStore } = require("./data/memoryStore");
 const { createPostgresStore } = require("./data/postgresStore");
-const { normalizeInventoryInput, normalizeOrderInput, normalizeStatus } = require("./validation");
+const { logEvent, requestLogger } = require("./logger");
+const {
+  normalizeCancellationInput,
+  normalizeInventoryInput,
+  normalizeOrderInput,
+  normalizeOrganizationInput,
+  normalizeOutletInput,
+  normalizePaymentStatus,
+  normalizeProductInput,
+  normalizeStatus,
+  normalizeUserInput
+} = require("./validation");
 const {
   dashboardPage,
   inventoryPage,
   loginPage,
   marketplacePage,
+  onboardingPage,
   orderFormPage,
-  orderSuccessPage
+  orderSuccessPage,
+  trackOrderPage,
+  usersPage
 } = require("./views");
 
 async function createStore(config) {
@@ -65,6 +80,7 @@ async function createApp(config = createConfig()) {
   }
 
   app.disable("x-powered-by");
+  app.use(requestLogger);
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -173,6 +189,43 @@ async function createApp(config = createConfig()) {
     }
   });
 
+  app.get("/track", async (request, response, next) => {
+    try {
+      const orderReference = String(request.query.orderReference || "").trim().toUpperCase();
+      const buyerEmail = String(request.query.buyerEmail || "").trim().toLowerCase();
+      if (!orderReference && !buyerEmail) {
+        response.send(trackOrderPage({ storeMode: store.mode }));
+        return;
+      }
+      const order = await store.findOrderForBuyer(orderReference, buyerEmail);
+      response.send(trackOrderPage({
+        storeMode: store.mode,
+        order,
+        error: order ? "" : "No order matched that reference and email."
+      }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/orders/cancel-request", async (request, response, next) => {
+    try {
+      const { input, errors } = normalizeCancellationInput(request.body);
+      if (errors.length > 0) {
+        response.status(400).send(trackOrderPage({ storeMode: store.mode, error: errors.join(" ") }));
+        return;
+      }
+      const order = await store.requestCancellation(input.orderReference, input.buyerEmail, input.reason);
+      response.send(trackOrderPage({
+        storeMode: store.mode,
+        order,
+        message: "Cancellation request sent to operations."
+      }));
+    } catch (error) {
+      response.status(404).send(trackOrderPage({ storeMode: store.mode, error: error.message }));
+    }
+  });
+
   app.post("/orders", async (request, response, next) => {
     const { input, errors } = normalizeOrderInput(request.body);
 
@@ -230,6 +283,88 @@ async function createApp(config = createConfig()) {
     }
   });
 
+  app.get("/admin/users", requireRole("admin"), async (request, response, next) => {
+    try {
+      response.send(usersPage({
+        users: await store.listUsers(),
+        storeMode: store.mode,
+        message: request.query.message || "",
+        error: request.query.error || "",
+        user: request.user,
+        csrfToken: getCsrfToken(request, config)
+      }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/admin/users", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+    try {
+      const { input, errors } = normalizeUserInput(request.body);
+      if (errors.length > 0) {
+        response.redirect(`/admin/users?error=${encodeURIComponent(errors.join(" "))}`);
+        return;
+      }
+      await store.upsertUser({
+        email: input.email,
+        name: input.name,
+        role: input.role,
+        passwordHash: await hashPassword(input.password)
+      });
+      response.redirect("/admin/users?message=User%20saved");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/onboarding", requireRole("admin"), async (request, response, next) => {
+    try {
+      response.send(onboardingPage({
+        organizations: await store.listOrganizations(),
+        outlets: await store.listOutlets(),
+        storeMode: store.mode,
+        message: request.query.message || "",
+        error: request.query.error || "",
+        csrfToken: getCsrfToken(request, config)
+      }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/organizations", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+    try {
+      const { input, errors } = normalizeOrganizationInput(request.body);
+      if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
+      await store.createOrganization(input, request.user);
+      response.redirect("/onboarding?message=Organization%20created");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/outlets", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+    try {
+      const { input, errors } = normalizeOutletInput(request.body);
+      if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
+      await store.createOutlet(input, request.user);
+      response.redirect("/onboarding?message=Outlet%20created");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/products", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+    try {
+      const { input, errors } = normalizeProductInput(request.body);
+      if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
+      await store.createProduct(input, request.user);
+      response.redirect("/onboarding?message=Product%20created");
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/products/:id/inventory", requireAuth, requireCsrf(config), async (request, response, next) => {
     try {
       const productId = Number(request.params.id);
@@ -264,8 +399,26 @@ async function createApp(config = createConfig()) {
     }
   });
 
+  app.post("/orders/:id/payment", requireAuth, requireCsrf(config), async (request, response, next) => {
+    try {
+      const paymentStatus = normalizePaymentStatus(request.body.paymentStatus);
+      if (!paymentStatus) {
+        throw new Error("Invalid payment status.");
+      }
+      await store.updatePaymentStatus(Number(request.params.id), paymentStatus, request.user);
+      response.redirect("/dashboard?message=Payment%20status%20updated");
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use((error, request, response, _next) => {
-    console.error(error);
+    logEvent("error", "http.error", {
+      requestId: request.id,
+      path: request.originalUrl,
+      message: error.message,
+      stack: config.isProduction ? undefined : error.stack
+    });
     const status = error.statusCode || 500;
     response.status(status).send(
       status >= 500

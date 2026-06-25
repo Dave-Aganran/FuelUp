@@ -150,6 +150,20 @@ function requireAuth(request, response, next) {
   next();
 }
 
+function requireRole(...roles) {
+  return (request, response, next) => {
+    if (!request.user) {
+      response.redirect(`/login?next=${encodeURIComponent(request.originalUrl)}`);
+      return;
+    }
+    if (!roles.includes(request.user.role)) {
+      response.status(403).send("You do not have access to this area.");
+      return;
+    }
+    next();
+  };
+}
+
 function requireCsrf(config) {
   return (request, response, next) => {
     const cookieToken = verifySignedValue(request.cookies[csrfCookieName], config.authSecret);
@@ -174,6 +188,7 @@ module.exports = {
   parseCookies,
   requireAuth,
   requireCsrf,
+  requireRole,
   setAuthCookies,
   verifyPassword
 };

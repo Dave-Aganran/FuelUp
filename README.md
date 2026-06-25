@@ -22,6 +22,8 @@ FuelUp is a trading and ordering platform that connects buyers with downstream o
 - Audit trail for order status and inventory changes
 - Automated integration tests for marketplace, ordering, login, inventory, and protected updates
 - GitHub Actions CI
+- Structured request logs with request IDs
+- Operations runbook
 - Production-oriented Render configuration
 
 ## Local Run
@@ -74,6 +76,10 @@ The app creates or updates its database tables and seed data automatically on st
 - `/health` - Render health check
 - `/readiness` - database readiness check
 
+## Operations
+
+See [OPERATIONS.md](OPERATIONS.md) for daily checks, Render environment requirements, backup/restore notes, and incident response.
+
 ## Required Production Environment Variables
 
 Set these in Render before exposing operations users:
@@ -103,6 +109,7 @@ Completed baseline:
 - Protected price and stock controls
 - Integration test coverage for critical flows
 - GitHub Actions CI for pushes and pull requests
+- Structured logs with request IDs
 - Database indexes for common operational paths
 - Graceful shutdown
 - Health and readiness checks

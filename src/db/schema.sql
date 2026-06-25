@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS orders (
   notes TEXT,
   unit_price NUMERIC(12, 2),
   total_amount NUMERIC(14, 2),
+  payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'invoice_sent', 'paid', 'refunded')),
+  cancellation_requested BOOLEAN NOT NULL DEFAULT FALSE,
+  cancellation_reason TEXT,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'ready', 'completed', 'cancelled')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -56,6 +59,13 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS user_outlets (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  outlet_id INTEGER NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, outlet_id)
+);
+
 CREATE TABLE IF NOT EXISTS audit_events (
   id SERIAL PRIMARY KEY,
   actor_user_id INTEGER REFERENCES users(id),
@@ -70,10 +80,15 @@ CREATE TABLE IF NOT EXISTS audit_events (
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_reference TEXT UNIQUE;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS unit_price NUMERIC(12, 2);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(14, 2);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_requested BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_products_outlet_id ON products(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
+CREATE INDEX IF NOT EXISTS idx_orders_reference ON orders(order_reference);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_outlet_id ON orders(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);

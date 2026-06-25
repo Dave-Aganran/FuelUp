@@ -141,5 +141,96 @@ describe("FuelUp core flows", () => {
       body: formBody({ status: "accepted", csrfToken: dashboardCsrf })
     });
     assert.equal(statusPost.status, 302);
+
+    const paymentPost = await fetch(`${baseUrl}/orders/1/payment`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        cookie: cookies,
+        "content-type": "application/x-www-form-urlencoded"
+      },
+      body: formBody({ paymentStatus: "invoice_sent", csrfToken: dashboardCsrf })
+    });
+    assert.equal(paymentPost.status, 302);
+  });
+
+  it("supports admin user management and onboarding", async () => {
+    const login = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ email: "ops@example.com", password: "StrongPass123!", next: "/admin/users" })
+    });
+    const cookies = parseCookies(login.headers);
+
+    const users = await fetch(`${baseUrl}/admin/users`, { headers: { cookie: cookies } });
+    assert.equal(users.status, 200);
+    const usersHtml = await users.text();
+    assert.match(usersHtml, /User management/);
+    const csrf = csrfFrom(usersHtml);
+
+    const createUser = await fetch(`${baseUrl}/admin/users`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { cookie: cookies, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        name: "Station Operator",
+        email: "station@example.com",
+        role: "operator",
+        password: "OperatorPass123!",
+        csrfToken: csrf
+      })
+    });
+    assert.equal(createUser.status, 302);
+
+    const onboarding = await fetch(`${baseUrl}/onboarding`, { headers: { cookie: cookies } });
+    assert.equal(onboarding.status, 200);
+    const onboardingHtml = await onboarding.text();
+    assert.match(onboardingHtml, /Organization and outlet onboarding/);
+    const onboardingCsrf = csrfFrom(onboardingHtml);
+
+    const createOrg = await fetch(`${baseUrl}/organizations`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { cookie: cookies, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ name: "CI Energy", contactEmail: "ops@cienergy.example", csrfToken: onboardingCsrf })
+    });
+    assert.equal(createOrg.status, 302);
+  });
+
+  it("lets buyers track orders and request cancellation", async () => {
+    const order = await fetch(`${baseUrl}/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        outletId: "1",
+        productId: "1",
+        buyerName: "Tracking Buyer Ltd",
+        buyerPhone: "+2348000000000",
+        buyerEmail: "track@example.com",
+        quantity: "5",
+        fulfillmentMethod: "pickup",
+        deliveryAddress: "",
+        notes: "Tracking test order"
+      })
+    });
+    const html = await order.text();
+    const reference = html.match(/FUP-[0-9A-Z-]+/)[0];
+
+    const track = await fetch(`${baseUrl}/track?orderReference=${reference}&buyerEmail=track@example.com`);
+    assert.equal(track.status, 200);
+    assert.match(await track.text(), /Tracking Buyer|PMS Petrol|Status:/);
+
+    const cancel = await fetch(`${baseUrl}/orders/cancel-request`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        orderReference: reference,
+        buyerEmail: "track@example.com",
+        reason: "No longer required"
+      })
+    });
+    assert.equal(cancel.status, 200);
+    assert.match(await cancel.text(), /Cancellation request sent/);
   });
 });

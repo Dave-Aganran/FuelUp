@@ -140,6 +140,9 @@ function createPostgresStore(pool) {
           ord.notes,
           ord.unit_price::float,
           ord.total_amount::float,
+          ord.payment_status,
+          ord.cancellation_requested,
+          ord.cancellation_reason,
           ord.status,
           ord.created_at,
           ord.updated_at,
@@ -280,6 +283,15 @@ function createPostgresStore(pool) {
       return rows[0] || null;
     },
 
+    async listUsers() {
+      const { rows } = await pool.query(`
+        SELECT id, email, name, role, is_active, created_at, updated_at
+        FROM users
+        ORDER BY email
+      `);
+      return rows;
+    },
+
     async upsertUser(input) {
       const { rows } = await pool.query(
         `
@@ -296,6 +308,175 @@ function createPostgresStore(pool) {
         [input.email, input.name, input.passwordHash, input.role]
       );
       return rows[0];
+    },
+
+    async listOrganizations() {
+      const { rows } = await pool.query("SELECT id, name, contact_email, created_at FROM organizations ORDER BY name");
+      return rows;
+    },
+
+    async listOutlets() {
+      const { rows } = await pool.query(`
+        SELECT
+          o.id,
+          o.organization_id,
+          o.name,
+          o.city,
+          o.address,
+          o.phone,
+          o.is_open,
+          org.name AS organization_name
+        FROM outlets o
+        JOIN organizations org ON org.id = o.organization_id
+        ORDER BY org.name, o.name
+      `);
+      return rows;
+    },
+
+    async createOrganization(input, actor) {
+      const { rows } = await pool.query(
+        "INSERT INTO organizations (name, contact_email) VALUES ($1, $2) RETURNING *",
+        [input.name, input.contactEmail]
+      );
+      await this.recordAuditEvent({
+        actor,
+        entityType: "organization",
+        entityId: rows[0].id,
+        action: "organization.created",
+        details: rows[0]
+      });
+      return rows[0];
+    },
+
+    async createOutlet(input, actor) {
+      const { rows } = await pool.query(
+        `
+          INSERT INTO outlets (organization_id, name, city, address, phone, is_open)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING *
+        `,
+        [input.organizationId, input.name, input.city, input.address, input.phone, input.isOpen]
+      );
+      await this.recordAuditEvent({
+        actor,
+        entityType: "outlet",
+        entityId: rows[0].id,
+        action: "outlet.created",
+        details: rows[0]
+      });
+      return rows[0];
+    },
+
+    async createProduct(input, actor) {
+      const { rows } = await pool.query(
+        `
+          INSERT INTO products (outlet_id, name, unit, price, available_quantity)
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING *
+        `,
+        [input.outletId, input.name, input.unit, input.price, input.availableQuantity]
+      );
+      await this.recordAuditEvent({
+        actor,
+        entityType: "product",
+        entityId: rows[0].id,
+        action: "product.created",
+        details: rows[0]
+      });
+      return rows[0];
+    },
+
+    async findOrderForBuyer(reference, buyerEmail) {
+      const { rows } = await pool.query(
+        `
+          SELECT
+            ord.id,
+            ord.order_reference,
+            ord.buyer_name,
+            ord.buyer_email,
+            ord.quantity::float,
+            ord.fulfillment_method,
+            ord.delivery_address,
+            ord.notes,
+            ord.unit_price::float,
+            ord.total_amount::float,
+            ord.payment_status,
+            ord.cancellation_requested,
+            ord.cancellation_reason,
+            ord.status,
+            ord.created_at,
+            p.name AS product_name,
+            p.unit,
+            o.name AS outlet_name,
+            org.name AS organization_name
+          FROM orders ord
+          JOIN products p ON p.id = ord.product_id
+          JOIN outlets o ON o.id = ord.outlet_id
+          JOIN organizations org ON org.id = o.organization_id
+          WHERE ord.order_reference = $1 AND ord.buyer_email = $2
+        `,
+        [reference, buyerEmail]
+      );
+      return rows[0] || null;
+    },
+
+    async requestCancellation(reference, buyerEmail, reason) {
+      const { rows } = await pool.query(
+        `
+          UPDATE orders
+          SET cancellation_requested = TRUE, cancellation_reason = $3, updated_at = NOW()
+          WHERE order_reference = $1 AND buyer_email = $2
+          RETURNING id, order_reference
+        `,
+        [reference, buyerEmail, reason]
+      );
+      if (rows.length === 0) throw new Error("Order not found.");
+      await this.recordAuditEvent({
+        actor: { email: buyerEmail },
+        entityType: "order",
+        entityId: rows[0].id,
+        action: "order.cancellation_requested",
+        details: { order_reference: reference, reason }
+      });
+      return this.findOrderForBuyer(reference, buyerEmail);
+    },
+
+    async updatePaymentStatus(orderId, paymentStatus, actor) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const current = await client.query("SELECT id, order_reference, payment_status FROM orders WHERE id = $1 FOR UPDATE", [
+          orderId
+        ]);
+        if (current.rowCount === 0) throw new Error("Order not found.");
+        const { rows } = await client.query(
+          "UPDATE orders SET payment_status = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+          [paymentStatus, orderId]
+        );
+        await client.query(
+          `
+            INSERT INTO audit_events (actor_user_id, actor_email, entity_type, entity_id, action, details)
+            VALUES ($1, $2, 'order', $3, 'order.payment_updated', $4)
+          `,
+          [
+            actor?.id || null,
+            actor?.email || null,
+            orderId,
+            JSON.stringify({
+              from: current.rows[0].payment_status,
+              to: paymentStatus,
+              order_reference: current.rows[0].order_reference
+            })
+          ]
+        );
+        await client.query("COMMIT");
+        return rows[0];
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     },
 
     async listAuditEvents(limit = 12) {

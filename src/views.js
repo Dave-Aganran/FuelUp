@@ -37,6 +37,8 @@ function layout({ title, body, storeMode }) {
         <a href="/">Marketplace</a>
         <a href="/dashboard">Operations</a>
         <a href="/inventory">Inventory</a>
+        <a href="/admin/users">Users</a>
+        <a href="/track">Track order</a>
         <a href="/login">Login</a>
       </nav>
     </header>
@@ -266,6 +268,48 @@ function orderSuccessPage(order, storeMode) {
   });
 }
 
+function trackOrderPage({ storeMode, order = null, error = "", message = "" }) {
+  return layout({
+    title: "Track Order",
+    storeMode,
+    body: `
+      <section class="form-shell">
+        <div class="form-grid">
+          <aside class="order-context">
+            <p class="eyebrow">Buyer self-service</p>
+            <h1>Track or request cancellation</h1>
+            <p>Use the order reference and buyer email from the reservation confirmation.</p>
+          </aside>
+          <section class="form-card">
+            ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
+            ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
+            <form method="get" action="/track">
+              <label>Order reference<input required name="orderReference" placeholder="FUP-000001" value="${escapeHtml(order?.order_reference || "")}"></label>
+              <label>Buyer email<input required type="email" name="buyerEmail" placeholder="buyer@example.com" value="${escapeHtml(order?.buyer_email || "")}"></label>
+              <button class="button wide" type="submit">Find order</button>
+            </form>
+            ${order ? `
+              <div class="summary-card">
+                <strong>${escapeHtml(order.order_reference)}</strong>
+                <span>${escapeHtml(order.product_name)} · ${formatQuantity(order.quantity)} ${escapeHtml(order.unit)}</span>
+                <span>Status: ${escapeHtml(order.status)} · Payment: ${escapeHtml(order.payment_status || "unpaid")}</span>
+                <span>Outlet: ${escapeHtml(order.outlet_name)}</span>
+                ${order.cancellation_requested ? `<span>Cancellation requested: ${escapeHtml(order.cancellation_reason || "")}</span>` : ""}
+              </div>
+              <form method="post" action="/orders/cancel-request">
+                <input type="hidden" name="orderReference" value="${escapeHtml(order.order_reference)}">
+                <input type="hidden" name="buyerEmail" value="${escapeHtml(order.buyer_email)}">
+                <label>Cancellation reason<textarea required name="reason" maxlength="400" placeholder="Tell the outlet why you need to cancel"></textarea></label>
+                <button class="button secondary wide" type="submit">Request cancellation</button>
+              </form>
+            ` : ""}
+          </section>
+        </div>
+      </section>
+    `
+  });
+}
+
 function auditFeed(events) {
   if (!events || events.length === 0) {
     return `<p class="empty-panel compact">No audit events yet.</p>`;
@@ -344,6 +388,15 @@ function dashboardPage({ orders, summary, auditEvents, storeMode, message = "", 
                   </select>
                   <button type="submit">Update</button>
                 </form>
+                <form class="inline-form" method="post" action="/orders/${order.id}/payment">
+                  <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+                  <select name="paymentStatus" aria-label="Payment status">
+                    ${["unpaid", "invoice_sent", "paid", "refunded"]
+                      .map((status) => `<option value="${status}" ${order.payment_status === status ? "selected" : ""}>${status}</option>`)
+                      .join("")}
+                  </select>
+                  <button type="submit">Payment</button>
+                </form>
               </td>
             </tr>
           `
@@ -399,6 +452,96 @@ function dashboardPage({ orders, summary, auditEvents, storeMode, message = "", 
           <h2>Activity</h2>
           ${auditFeed(auditEvents)}
         </aside>
+      </section>
+    `
+  });
+}
+
+function usersPage({ users, storeMode, message = "", error = "", user, csrfToken }) {
+  const rows = users.map((item) => `
+    <tr>
+      <td><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.email)}</span></td>
+      <td>${escapeHtml(item.role)}</td>
+      <td>${item.is_active ? "Active" : "Disabled"}</td>
+    </tr>
+  `).join("");
+
+  return layout({
+    title: "Users",
+    storeMode,
+    body: `
+      <section class="dashboard-head">
+        <div><p class="eyebrow">Admin</p><h1>User management</h1><p>Signed in as ${escapeHtml(user.email)}.</p></div>
+        <a class="button secondary" href="/onboarding">Onboard outlets</a>
+      </section>
+      ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
+      ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
+      <section class="ops-grid">
+        <div class="table-wrap">
+          <table><thead><tr><th>User</th><th>Role</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+        </div>
+        <aside class="activity-panel">
+          <p class="eyebrow">Create user</p>
+          <form method="post" action="/admin/users">
+            <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+            <label>Name<input required name="name"></label>
+            <label>Email<input required type="email" name="email"></label>
+            <label>Role<select name="role"><option value="operator">operator</option><option value="admin">admin</option></select></label>
+            <label>Password<input required type="password" name="password" minlength="10"></label>
+            <button class="button wide" type="submit">Create user</button>
+          </form>
+        </aside>
+      </section>
+    `
+  });
+}
+
+function onboardingPage({ organizations, outlets, storeMode, message = "", error = "", csrfToken }) {
+  return layout({
+    title: "Onboarding",
+    storeMode,
+    body: `
+      <section class="dashboard-head">
+        <div><p class="eyebrow">Admin</p><h1>Organization and outlet onboarding</h1><p>Create operators' trading entities and products.</p></div>
+        <a class="button secondary" href="/admin/users">User management</a>
+      </section>
+      ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
+      ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
+      <section class="admin-grid">
+        <article class="form-card">
+          <h2>Organization</h2>
+          <form method="post" action="/organizations">
+            <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+            <label>Name<input required name="name"></label>
+            <label>Contact email<input required type="email" name="contactEmail"></label>
+            <button class="button wide" type="submit">Create organization</button>
+          </form>
+        </article>
+        <article class="form-card">
+          <h2>Outlet</h2>
+          <form method="post" action="/outlets">
+            <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+            <label>Organization<select name="organizationId">${organizations.map((org) => `<option value="${org.id}">${escapeHtml(org.name)}</option>`).join("")}</select></label>
+            <label>Name<input required name="name"></label>
+            <label>City<input required name="city"></label>
+            <label>Address<input required name="address"></label>
+            <label>Phone<input required name="phone"></label>
+            <label class="check-row"><input type="checkbox" name="isOpen" checked> Open for orders</label>
+            <button class="button wide" type="submit">Create outlet</button>
+          </form>
+        </article>
+        <article class="form-card">
+          <h2>Product</h2>
+          <form method="post" action="/products">
+            <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+            <label>Outlet<select name="outletId">${outlets.map((outlet) => `<option value="${outlet.id}">${escapeHtml(outlet.organization_name)} - ${escapeHtml(outlet.name)}</option>`).join("")}</select></label>
+            <label>Name<input required name="name" placeholder="PMS Petrol"></label>
+            <label>Unit<input required name="unit" placeholder="litre"></label>
+            <label>Price<input required type="number" name="price" min="1" step="0.01"></label>
+            <label>Available quantity<input required type="number" name="availableQuantity" min="0" step="0.01"></label>
+            <button class="button wide" type="submit">Create product</button>
+          </form>
+        </article>
       </section>
     `
   });
@@ -484,5 +627,8 @@ module.exports = {
   loginPage,
   marketplacePage,
   orderFormPage,
-  orderSuccessPage
+  orderSuccessPage,
+  onboardingPage,
+  trackOrderPage,
+  usersPage
 };

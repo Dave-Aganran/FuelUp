@@ -136,6 +136,9 @@ function createMemoryStore() {
         notes: input.notes || "",
         unit_price: Number(product.price),
         total_amount: Number(product.price) * Number(input.quantity),
+        payment_status: "unpaid",
+        cancellation_requested: false,
+        cancellation_reason: "",
         status: "pending",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -194,6 +197,10 @@ function createMemoryStore() {
       return users.find((item) => item.id === id && item.is_active) || null;
     },
 
+    async listUsers() {
+      return users.slice().sort((a, b) => a.email.localeCompare(b.email));
+    },
+
     async upsertUser(input) {
       const existing = users.find((item) => item.email === input.email);
       if (existing) {
@@ -219,6 +226,101 @@ function createMemoryStore() {
       };
       users.push(user);
       return user;
+    },
+
+    async listOrganizations() {
+      return organizations.slice();
+    },
+
+    async listOutlets() {
+      return outlets.slice();
+    },
+
+    async createOrganization(input, actor) {
+      const organization = {
+        id: organizations.length + 1,
+        name: input.name,
+        contact_email: input.contactEmail,
+        created_at: new Date().toISOString()
+      };
+      organizations.push(organization);
+      recordAuditEvent({ actor, entityType: "organization", entityId: organization.id, action: "organization.created", details: organization });
+      return organization;
+    },
+
+    async createOutlet(input, actor) {
+      const organization = organizations.find((item) => item.id === input.organizationId);
+      if (!organization) throw new Error("Organization not found.");
+      const outlet = {
+        id: outlets.length + 1,
+        organization_id: organization.id,
+        organization_name: organization.name,
+        name: input.name,
+        city: input.city,
+        address: input.address,
+        phone: input.phone,
+        is_open: input.isOpen
+      };
+      outlets.push(outlet);
+      recordAuditEvent({ actor, entityType: "outlet", entityId: outlet.id, action: "outlet.created", details: outlet });
+      return outlet;
+    },
+
+    async createProduct(input, actor) {
+      const outlet = outlets.find((item) => item.id === input.outletId);
+      if (!outlet) throw new Error("Outlet not found.");
+      const product = {
+        id: products.length + 1,
+        outlet_id: outlet.id,
+        name: input.name,
+        unit: input.unit,
+        price: Number(input.price),
+        available_quantity: Number(input.availableQuantity)
+      };
+      products.push(product);
+      recordAuditEvent({ actor, entityType: "product", entityId: product.id, action: "product.created", details: product });
+      return withOutletAndOrganization(product);
+    },
+
+    async findOrderForBuyer(reference, buyerEmail) {
+      const order = orders.find(
+        (item) => item.order_reference === reference && item.buyer_email === buyerEmail
+      );
+      return order ? withOrderDetails(order) : null;
+    },
+
+    async requestCancellation(reference, buyerEmail, reason) {
+      const order = orders.find(
+        (item) => item.order_reference === reference && item.buyer_email === buyerEmail
+      );
+      if (!order) throw new Error("Order not found.");
+      order.cancellation_requested = true;
+      order.cancellation_reason = reason;
+      order.updated_at = new Date().toISOString();
+      recordAuditEvent({
+        actor: { email: buyerEmail },
+        entityType: "order",
+        entityId: order.id,
+        action: "order.cancellation_requested",
+        details: { order_reference: reference, reason }
+      });
+      return withOrderDetails(order);
+    },
+
+    async updatePaymentStatus(orderId, paymentStatus, actor) {
+      const order = orders.find((item) => item.id === orderId);
+      if (!order) throw new Error("Order not found.");
+      const previous = order.payment_status || "unpaid";
+      order.payment_status = paymentStatus;
+      order.updated_at = new Date().toISOString();
+      recordAuditEvent({
+        actor,
+        entityType: "order",
+        entityId: order.id,
+        action: "order.payment_updated",
+        details: { from: previous, to: paymentStatus, order_reference: order.order_reference }
+      });
+      return withOrderDetails(order);
     },
 
     async listAuditEvents(limit = 12) {
