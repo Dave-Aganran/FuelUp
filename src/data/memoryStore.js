@@ -48,6 +48,8 @@ const products = [
 const orders = [];
 const users = [];
 const auditEvents = [];
+const notificationEvents = [];
+const userOutlets = [];
 
 function orderReference(id) {
   return `FUP-${String(id).padStart(6, "0")}`;
@@ -152,12 +154,24 @@ function createMemoryStore() {
       return withOrderDetails(order);
     },
 
-    async listOrders() {
-      return orders.slice().reverse().map(withOrderDetails);
+    async listOrders(user) {
+      const allowedOutletIds = user?.role === "operator"
+        ? userOutlets.filter((item) => item.user_id === user.id).map((item) => item.outlet_id)
+        : null;
+      return orders
+        .filter((order) => !allowedOutletIds || allowedOutletIds.includes(order.outlet_id))
+        .slice()
+        .reverse()
+        .map(withOrderDetails);
     },
 
-    async listInventory() {
-      return products.map(withOutletAndOrganization);
+    async listInventory(user) {
+      const allowedOutletIds = user?.role === "operator"
+        ? userOutlets.filter((item) => item.user_id === user.id).map((item) => item.outlet_id)
+        : null;
+      return products
+        .filter((product) => !allowedOutletIds || allowedOutletIds.includes(product.outlet_id))
+        .map(withOutletAndOrganization);
     },
 
     async updateInventory(productId, input, actor) {
@@ -185,11 +199,12 @@ function createMemoryStore() {
       return withOutletAndOrganization(product);
     },
 
-    async getDashboardSummary() {
-      const totalOrders = orders.length;
-      const pendingOrders = orders.filter((item) => item.status === "pending").length;
-      const completedOrders = orders.filter((item) => item.status === "completed").length;
-      const totalValue = orders.reduce((sum, item) => sum + Number(item.total_amount || 0), 0);
+    async getDashboardSummary(user) {
+      const visibleOrders = await this.listOrders(user);
+      const totalOrders = visibleOrders.length;
+      const pendingOrders = visibleOrders.filter((item) => item.status === "pending").length;
+      const completedOrders = visibleOrders.filter((item) => item.status === "completed").length;
+      const totalValue = visibleOrders.reduce((sum, item) => sum + Number(item.total_amount || 0), 0);
       return { totalOrders, pendingOrders, completedOrders, totalValue };
     },
 
@@ -203,6 +218,15 @@ function createMemoryStore() {
 
     async listUsers() {
       return users.slice().sort((a, b) => a.email.localeCompare(b.email));
+    },
+
+    async setUserActive(userId, isActive, actor) {
+      const user = users.find((item) => item.id === userId);
+      if (!user) throw new Error("User not found.");
+      user.is_active = isActive;
+      user.updated_at = new Date().toISOString();
+      recordAuditEvent({ actor, entityType: "user", entityId: userId, action: isActive ? "user.enabled" : "user.disabled", details: { email: user.email } });
+      return user;
     },
 
     async upsertUser(input) {
@@ -230,6 +254,23 @@ function createMemoryStore() {
       };
       users.push(user);
       return user;
+    },
+
+    async assignUserOutlet(userId, outletId, actor) {
+      if (!users.find((item) => item.id === userId)) throw new Error("User not found.");
+      if (!outlets.find((item) => item.id === outletId)) throw new Error("Outlet not found.");
+      if (!userOutlets.find((item) => item.user_id === userId && item.outlet_id === outletId)) {
+        userOutlets.push({ user_id: userId, outlet_id: outletId, created_at: new Date().toISOString() });
+      }
+      recordAuditEvent({ actor, entityType: "user", entityId: userId, action: "user.outlet_assigned", details: { outletId } });
+    },
+
+    async listUserOutletAssignments() {
+      return userOutlets.map((assignment) => {
+        const user = users.find((item) => item.id === assignment.user_id);
+        const outlet = outlets.find((item) => item.id === assignment.outlet_id);
+        return { ...assignment, user_email: user?.email || "", outlet_name: outlet?.name || "" };
+      });
     },
 
     async listOrganizations() {
@@ -325,6 +366,41 @@ function createMemoryStore() {
         details: { from: previous, to: paymentStatus, order_reference: order.order_reference }
       });
       return withOrderDetails(order);
+    },
+
+    async listSettlementRows() {
+      return orders
+        .filter((order) => order.payment_status === "paid")
+        .map(withOrderDetails);
+    },
+
+    async createNotification(input) {
+      const event = {
+        id: notificationEvents.length + 1,
+        recipient_email: input.recipientEmail,
+        subject: input.subject,
+        body: input.body,
+        channel: "email",
+        status: "queued",
+        provider_response: null,
+        created_at: new Date().toISOString(),
+        sent_at: null
+      };
+      notificationEvents.push(event);
+      return event;
+    },
+
+    async updateNotificationStatus(id, status, providerResponse) {
+      const event = notificationEvents.find((item) => item.id === id);
+      if (!event) throw new Error("Notification not found.");
+      event.status = status;
+      event.provider_response = providerResponse || null;
+      event.sent_at = status === "sent" ? new Date().toISOString() : null;
+      return event;
+    },
+
+    async listNotifications(limit = 20) {
+      return notificationEvents.slice().reverse().slice(0, limit);
     },
 
     async prepareOrderPayment(reference, buyerEmail, payment) {

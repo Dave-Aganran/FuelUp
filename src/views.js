@@ -470,13 +470,30 @@ function dashboardPage({ orders, summary, auditEvents, storeMode, message = "", 
   });
 }
 
-function usersPage({ users, storeMode, message = "", error = "", user, csrfToken }) {
+function usersPage({ users, assignments = [], outlets = [], storeMode, message = "", error = "", user, csrfToken }) {
   const rows = users.map((item) => `
     <tr>
       <td><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.email)}</span></td>
       <td>${escapeHtml(item.role)}</td>
       <td>${item.is_active ? "Active" : "Disabled"}</td>
+      <td>
+        <form class="inline-form" method="post" action="/admin/users/${item.id}/active">
+          <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+          <input type="hidden" name="isActive" value="${item.is_active ? "false" : "true"}">
+          <button type="submit">${item.is_active ? "Disable" : "Enable"}</button>
+        </form>
+        <form class="inline-form" method="post" action="/admin/users/${item.id}/outlets">
+          <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+          <select name="outletId" aria-label="Assign outlet">
+            ${outlets.map((outlet) => `<option value="${outlet.id}">${escapeHtml(outlet.organization_name)} - ${escapeHtml(outlet.name)}</option>`).join("")}
+          </select>
+          <button type="submit">Assign</button>
+        </form>
+      </td>
     </tr>
+  `).join("");
+  const assignmentRows = assignments.map((item) => `
+    <tr><td>${escapeHtml(item.user_email)}</td><td>${escapeHtml(item.organization_name || "")}</td><td>${escapeHtml(item.outlet_name)}</td></tr>
   `).join("");
 
   return layout({
@@ -485,13 +502,17 @@ function usersPage({ users, storeMode, message = "", error = "", user, csrfToken
     body: `
       <section class="dashboard-head">
         <div><p class="eyebrow">Admin</p><h1>User management</h1><p>Signed in as ${escapeHtml(user.email)}.</p></div>
-        <a class="button secondary" href="/onboarding">Onboard outlets</a>
+        <div class="hero-actions">
+          <a class="button secondary" href="/onboarding">Onboard outlets</a>
+          <a class="button secondary" href="/settlements.csv">Export settlements</a>
+          <a class="button secondary" href="/notifications">Notification outbox</a>
+        </div>
       </section>
       ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
       ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
       <section class="ops-grid">
         <div class="table-wrap">
-          <table><thead><tr><th>User</th><th>Role</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+          <table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Controls</th></tr></thead><tbody>${rows}</tbody></table>
         </div>
         <aside class="activity-panel">
           <p class="eyebrow">Create user</p>
@@ -504,6 +525,9 @@ function usersPage({ users, storeMode, message = "", error = "", user, csrfToken
             <button class="button wide" type="submit">Create user</button>
           </form>
         </aside>
+      </section>
+      <section class="table-wrap spaced">
+        <table><thead><tr><th>User</th><th>Organization</th><th>Outlet</th></tr></thead><tbody>${assignmentRows || `<tr><td colspan="3" class="empty">No outlet assignments yet.</td></tr>`}</tbody></table>
       </section>
     `
   });

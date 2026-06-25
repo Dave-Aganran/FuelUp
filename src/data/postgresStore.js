@@ -126,7 +126,9 @@ function createPostgresStore(pool) {
       }
     },
 
-    async listOrders() {
+    async listOrders(user) {
+      const scopeJoin = user?.role === "operator" ? "JOIN user_outlets uo ON uo.outlet_id = ord.outlet_id AND uo.user_id = $1" : "";
+      const params = user?.role === "operator" ? [user.id] : [];
       const { rows } = await pool.query(`
         SELECT
           ord.id,
@@ -159,12 +161,15 @@ function createPostgresStore(pool) {
         JOIN products p ON p.id = ord.product_id
         JOIN outlets o ON o.id = ord.outlet_id
         JOIN organizations org ON org.id = o.organization_id
+        ${scopeJoin}
         ORDER BY ord.created_at DESC
-      `);
+      `, params);
       return rows;
     },
 
-    async listInventory() {
+    async listInventory(user) {
+      const scopeJoin = user?.role === "operator" ? "JOIN user_outlets uo ON uo.outlet_id = p.outlet_id AND uo.user_id = $1" : "";
+      const params = user?.role === "operator" ? [user.id] : [];
       const { rows } = await pool.query(`
         SELECT
           p.id,
@@ -183,8 +188,9 @@ function createPostgresStore(pool) {
         FROM products p
         JOIN outlets o ON o.id = p.outlet_id
         JOIN organizations org ON org.id = o.organization_id
+        ${scopeJoin}
         ORDER BY org.name, o.name, p.name
-      `);
+      `, params);
       return rows;
     },
 
@@ -259,7 +265,9 @@ function createPostgresStore(pool) {
       }
     },
 
-    async getDashboardSummary() {
+    async getDashboardSummary(user) {
+      const scopeJoin = user?.role === "operator" ? "JOIN user_outlets uo ON uo.outlet_id = orders.outlet_id AND uo.user_id = $1" : "";
+      const params = user?.role === "operator" ? [user.id] : [];
       const { rows } = await pool.query(`
         SELECT
           COUNT(*)::int AS "totalOrders",
@@ -267,7 +275,8 @@ function createPostgresStore(pool) {
           COUNT(*) FILTER (WHERE status = 'completed')::int AS "completedOrders",
           COALESCE(SUM(total_amount), 0)::float AS "totalValue"
         FROM orders
-      `);
+        ${scopeJoin}
+      `, params);
       return rows[0];
     },
 
@@ -296,6 +305,22 @@ function createPostgresStore(pool) {
       return rows;
     },
 
+    async setUserActive(userId, isActive, actor) {
+      const { rows } = await pool.query(
+        "UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING id, email, name, role, is_active",
+        [isActive, userId]
+      );
+      if (rows.length === 0) throw new Error("User not found.");
+      await this.recordAuditEvent({
+        actor,
+        entityType: "user",
+        entityId: userId,
+        action: isActive ? "user.enabled" : "user.disabled",
+        details: { email: rows[0].email }
+      });
+      return rows[0];
+    },
+
     async upsertUser(input) {
       const { rows } = await pool.query(
         `
@@ -312,6 +337,38 @@ function createPostgresStore(pool) {
         [input.email, input.name, input.passwordHash, input.role]
       );
       return rows[0];
+    },
+
+    async assignUserOutlet(userId, outletId, actor) {
+      await pool.query(
+        "INSERT INTO user_outlets (user_id, outlet_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        [userId, outletId]
+      );
+      await this.recordAuditEvent({
+        actor,
+        entityType: "user",
+        entityId: userId,
+        action: "user.outlet_assigned",
+        details: { outletId }
+      });
+    },
+
+    async listUserOutletAssignments() {
+      const { rows } = await pool.query(`
+        SELECT
+          uo.user_id,
+          uo.outlet_id,
+          u.email AS user_email,
+          o.name AS outlet_name,
+          org.name AS organization_name,
+          uo.created_at
+        FROM user_outlets uo
+        JOIN users u ON u.id = uo.user_id
+        JOIN outlets o ON o.id = uo.outlet_id
+        JOIN organizations org ON org.id = o.organization_id
+        ORDER BY u.email, org.name, o.name
+      `);
+      return rows;
     },
 
     async listOrganizations() {
@@ -485,6 +542,62 @@ function createPostgresStore(pool) {
       } finally {
         client.release();
       }
+    },
+
+    async listSettlementRows() {
+      const { rows } = await pool.query(`
+        SELECT
+          ord.order_reference,
+          ord.buyer_name,
+          ord.buyer_email,
+          ord.total_amount::float,
+          ord.payment_status,
+          ord.payment_provider,
+          ord.payment_reference,
+          ord.paid_at,
+          o.name AS outlet_name,
+          org.name AS organization_name
+        FROM orders ord
+        JOIN outlets o ON o.id = ord.outlet_id
+        JOIN organizations org ON org.id = o.organization_id
+        WHERE ord.payment_status = 'paid'
+        ORDER BY ord.paid_at DESC NULLS LAST, ord.created_at DESC
+      `);
+      return rows;
+    },
+
+    async createNotification(input) {
+      const { rows } = await pool.query(
+        `
+          INSERT INTO notification_events (recipient_email, subject, body, channel)
+          VALUES ($1, $2, $3, 'email')
+          RETURNING *
+        `,
+        [input.recipientEmail, input.subject, input.body]
+      );
+      return rows[0];
+    },
+
+    async updateNotificationStatus(id, status, providerResponse) {
+      const { rows } = await pool.query(
+        `
+          UPDATE notification_events
+          SET status = $1, provider_response = $2, sent_at = CASE WHEN $1 = 'sent' THEN NOW() ELSE sent_at END
+          WHERE id = $3
+          RETURNING *
+        `,
+        [status, JSON.stringify(providerResponse || {}), id]
+      );
+      if (rows.length === 0) throw new Error("Notification not found.");
+      return rows[0];
+    },
+
+    async listNotifications(limit = 20) {
+      const { rows } = await pool.query(
+        "SELECT * FROM notification_events ORDER BY created_at DESC LIMIT $1",
+        [limit]
+      );
+      return rows;
     },
 
     async prepareOrderPayment(reference, buyerEmail, payment) {

@@ -25,6 +25,11 @@ FuelUp is a trading and ordering platform that connects buyers with downstream o
 - Structured request logs with request IDs
 - Operations runbook
 - Paystack payment initialization, callback verification, and webhook signature verification
+- Notification outbox with optional webhook dispatch
+- Outlet assignment for scoped operator access
+- Settlement CSV export
+- Admin account enable/disable controls
+- Migration runner foundation
 - Production-oriented Render configuration
 
 ## Local Run
@@ -75,6 +80,8 @@ The app creates or updates its database tables and seed data automatically on st
 - `/inventory` - protected operator inventory controls
 - `/login` - operator login
 - `/track` - buyer order tracking and payment
+- `/settlements.csv` - admin settlement export
+- `/notifications` - admin notification outbox JSON
 - `/health` - Render health check
 - `/readiness` - database readiness check
 
@@ -92,6 +99,8 @@ Set these in Render before exposing operations users:
 - `COOKIE_SECURE=true` - already configured in `render.yaml`
 - `PAYSTACK_SECRET_KEY` - Paystack secret key
 - `PAYSTACK_CALLBACK_URL` - usually `https://fuelup-poc.onrender.com/payments/paystack/callback`
+- `NOTIFICATION_WEBHOOK_URL` - optional outbound notification webhook
+- `NOTIFICATION_FROM_EMAIL` - sender identity for webhook payloads
 
 If `ADMIN_EMAIL` and `ADMIN_PASSWORD` are not set, the public marketplace still runs, but the operations dashboard cannot be accessed.
 
@@ -115,6 +124,10 @@ Completed baseline:
 - GitHub Actions CI for pushes and pull requests
 - Structured logs with request IDs
 - Paystack payment initialization, callback verification, and signed webhook handling
+- Notification outbox and optional webhook dispatch
+- Outlet-scoped operators
+- Settlement CSV export
+- Account enable/disable controls
 - Database indexes for common operational paths
 - Graceful shutdown
 - Health and readiness checks
@@ -124,6 +137,6 @@ Remaining production blockers:
 
 - Multi-user invitation and password reset flow
 - Settlement reconciliation reports
-- Notification channels for buyers and outlets
+- Direct email/SMS provider integration beyond webhook dispatch
 - Backups, observability, and incident response procedures
 - Wider test coverage around PostgreSQL migrations and failure states

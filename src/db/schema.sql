@@ -81,6 +81,18 @@ CREATE TABLE IF NOT EXISTS audit_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS notification_events (
+  id SERIAL PRIMARY KEY,
+  recipient_email TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  channel TEXT NOT NULL DEFAULT 'email',
+  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'sent', 'failed')),
+  provider_response JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sent_at TIMESTAMPTZ
+);
+
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_reference TEXT UNIQUE;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS unit_price NUMERIC(12, 2);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(14, 2);
@@ -101,5 +113,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_reference ON orders(order_reference);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_outlet_id ON orders(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_user_outlets_outlet_id ON user_outlets(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_events_entity ON audit_events(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_notification_events_created_at ON notification_events(created_at DESC);

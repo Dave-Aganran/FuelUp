@@ -21,6 +21,12 @@ const { createMemoryStore } = require("./data/memoryStore");
 const { createPostgresStore } = require("./data/postgresStore");
 const { logEvent, requestLogger } = require("./logger");
 const {
+  dispatchNotification,
+  orderCreatedNotification,
+  orderStatusNotification,
+  paymentNotification
+} = require("./notifications");
+const {
   initializePaystackPayment,
   paystackAmount,
   verifyPaystackReference,
@@ -243,6 +249,11 @@ async function createApp(config = createConfig()) {
         return;
       }
       const order = await store.requestCancellation(input.orderReference, input.buyerEmail, input.reason);
+      await dispatchNotification(store, config, {
+        recipientEmail: input.buyerEmail,
+        subject: `FuelUp cancellation request ${input.orderReference}`,
+        body: `Your cancellation request for ${input.orderReference} has been sent to operations.`
+      });
       response.send(trackOrderPage({
         storeMode: store.mode,
         order,
@@ -311,6 +322,7 @@ async function createApp(config = createConfig()) {
       }
 
       const order = await store.createOrder(input);
+      await dispatchNotification(store, config, orderCreatedNotification(order));
       response.status(201).send(orderSuccessPage(order, store.mode));
     } catch (error) {
       try {
@@ -324,8 +336,8 @@ async function createApp(config = createConfig()) {
 
   app.get("/dashboard", requireAuth, async (request, response, next) => {
     try {
-      const orders = await store.listOrders();
-      const summary = await store.getDashboardSummary();
+      const orders = await store.listOrders(request.user);
+      const summary = await store.getDashboardSummary(request.user);
       const auditEvents = await store.listAuditEvents(8);
       response.send(dashboardPage({
         orders,
@@ -343,7 +355,7 @@ async function createApp(config = createConfig()) {
 
   app.get("/inventory", requireAuth, async (request, response, next) => {
     try {
-      const products = await store.listInventory();
+      const products = await store.listInventory(request.user);
       const auditEvents = await store.listAuditEvents(8);
       response.send(inventoryPage({
         products,
@@ -363,6 +375,8 @@ async function createApp(config = createConfig()) {
     try {
       response.send(usersPage({
         users: await store.listUsers(),
+        assignments: await store.listUserOutletAssignments(),
+        outlets: await store.listOutlets(),
         storeMode: store.mode,
         message: request.query.message || "",
         error: request.query.error || "",
@@ -388,6 +402,62 @@ async function createApp(config = createConfig()) {
         passwordHash: await hashPassword(input.password)
       });
       response.redirect("/admin/users?message=User%20saved");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/admin/users/:id/active", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+    try {
+      const userId = Number(request.params.id);
+      const isActive = request.body.isActive === "true";
+      await store.setUserActive(userId, isActive, request.user);
+      response.redirect("/admin/users?message=User%20updated");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/admin/users/:id/outlets", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+    try {
+      const userId = Number(request.params.id);
+      const outletId = Number(request.body.outletId);
+      await store.assignUserOutlet(userId, outletId, request.user);
+      response.redirect("/admin/users?message=Outlet%20assigned");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/settlements.csv", requireRole("admin"), async (_request, response, next) => {
+    try {
+      const rows = await store.listSettlementRows();
+      const header = ["order_reference", "buyer_email", "organization", "outlet", "amount", "payment_provider", "payment_reference", "paid_at"];
+      const escapeCsv = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+      const csv = [
+        header.join(","),
+        ...rows.map((row) => [
+          row.order_reference,
+          row.buyer_email,
+          row.organization_name,
+          row.outlet_name,
+          row.total_amount,
+          row.payment_provider,
+          row.payment_reference,
+          row.paid_at
+        ].map(escapeCsv).join(","))
+      ].join("\n");
+      response.setHeader("content-type", "text/csv; charset=utf-8");
+      response.setHeader("content-disposition", "attachment; filename=\"fuelup-settlements.csv\"");
+      response.send(csv);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/notifications", requireRole("admin"), async (_request, response, next) => {
+    try {
+      response.json(await store.listNotifications(50));
     } catch (error) {
       next(error);
     }
@@ -468,7 +538,8 @@ async function createApp(config = createConfig()) {
         throw new Error("Invalid order status.");
       }
 
-      await store.updateOrderStatus(Number(request.params.id), status, request.user);
+      const order = await store.updateOrderStatus(Number(request.params.id), status, request.user);
+      await dispatchNotification(store, config, orderStatusNotification(order));
       response.redirect("/dashboard?message=Order%20status%20updated");
     } catch (error) {
       next(error);
@@ -481,7 +552,8 @@ async function createApp(config = createConfig()) {
       if (!paymentStatus) {
         throw new Error("Invalid payment status.");
       }
-      await store.updatePaymentStatus(Number(request.params.id), paymentStatus, request.user);
+      const order = await store.updatePaymentStatus(Number(request.params.id), paymentStatus, request.user);
+      await dispatchNotification(store, config, paymentNotification(order));
       response.redirect("/dashboard?message=Payment%20status%20updated");
     } catch (error) {
       next(error);

@@ -566,6 +566,10 @@ textarea {
   overflow-x: auto;
 }
 
+.table-wrap.spaced {
+  margin-top: 16px;
+}
+
 .ops-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;

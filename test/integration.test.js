@@ -186,6 +186,25 @@ describe("FuelUp core flows", () => {
     });
     assert.equal(createUser.status, 302);
 
+    const usersAfter = await fetch(`${baseUrl}/admin/users`, { headers: { cookie: cookies } });
+    const usersAfterHtml = await usersAfter.text();
+    const assignCsrf = csrfFrom(usersAfterHtml);
+    const assign = await fetch(`${baseUrl}/admin/users/2/outlets`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { cookie: cookies, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ outletId: "1", csrfToken: assignCsrf })
+    });
+    assert.equal(assign.status, 302);
+
+    const disable = await fetch(`${baseUrl}/admin/users/2/active`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { cookie: cookies, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ isActive: "false", csrfToken: assignCsrf })
+    });
+    assert.equal(disable.status, 302);
+
     const onboarding = await fetch(`${baseUrl}/onboarding`, { headers: { cookie: cookies } });
     assert.equal(onboarding.status, 200);
     const onboardingHtml = await onboarding.text();
@@ -313,5 +332,25 @@ describe("FuelUp core flows", () => {
       body: payload
     });
     assert.equal(webhook.status, 200);
+  });
+
+  it("exposes protected notification outbox and settlement export", async () => {
+    const login = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ email: "ops@example.com", password: "StrongPass123!", next: "/admin/users" })
+    });
+    const cookies = parseCookies(login.headers);
+
+    const notifications = await fetch(`${baseUrl}/notifications`, { headers: { cookie: cookies } });
+    assert.equal(notifications.status, 200);
+    const notificationRows = await notifications.json();
+    assert.ok(Array.isArray(notificationRows));
+    assert.ok(notificationRows.length > 0);
+
+    const settlements = await fetch(`${baseUrl}/settlements.csv`, { headers: { cookie: cookies } });
+    assert.equal(settlements.status, 200);
+    assert.match(await settlements.text(), /order_reference,buyer_email,organization/);
   });
 });

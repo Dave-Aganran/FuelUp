@@ -31,6 +31,8 @@ function createConfig() {
     adminPassword: process.env.ADMIN_PASSWORD || "",
     paystackSecretKey: process.env.PAYSTACK_SECRET_KEY || "",
     paystackCallbackUrl: process.env.PAYSTACK_CALLBACK_URL || "",
+    notificationWebhookUrl: process.env.NOTIFICATION_WEBHOOK_URL || "",
+    notificationFromEmail: process.env.NOTIFICATION_FROM_EMAIL || "no-reply@fuelup.local",
     appName: "FuelUp"
   };
 }

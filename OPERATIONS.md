@@ -17,6 +17,8 @@
 - `ADMIN_PASSWORD`
 - `PAYSTACK_SECRET_KEY`
 - `PAYSTACK_CALLBACK_URL`
+- `NOTIFICATION_WEBHOOK_URL` optional
+- `NOTIFICATION_FROM_EMAIL`
 - `TRUST_PROXY=true`
 
 ## Backup And Restore
@@ -24,6 +26,7 @@
 - Enable Render PostgreSQL backups before production traffic.
 - Before major schema changes, take a manual database backup.
 - Test restore into a separate database before relying on a backup plan.
+- Run `pnpm run db:migrate` for explicit migration application when moving away from startup schema sync.
 
 ## Incident Response
 
@@ -50,3 +53,19 @@ https://fuelup-poc.onrender.com/webhooks/paystack
 ```
 
 Use Render logs and audit events to reconcile payment initialization, callbacks, and `charge.success` webhook events.
+
+## Notifications
+
+FuelUp records notification events for buyer-facing order, payment, and cancellation messages. If `NOTIFICATION_WEBHOOK_URL` is set, FuelUp posts notification payloads to that endpoint. If not set, notifications remain queued and visible at `/notifications` for admins.
+
+## Outlet Access
+
+Admins assign users to outlets from `/admin/users`. Operators only see dashboard orders and inventory for assigned outlets.
+
+## Settlements
+
+Admins can export paid-order settlements from:
+
+```text
+https://fuelup-poc.onrender.com/settlements.csv
+```
