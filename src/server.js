@@ -44,8 +44,7 @@ async function createStore(config) {
   return { ...createPostgresStore(pool), pool };
 }
 
-async function main() {
-  const config = createConfig();
+async function createApp(config = createConfig()) {
   const app = express();
   const store = await createStore(config);
   const adminConfigured = Boolean(config.adminEmail && config.adminPassword);
@@ -275,6 +274,12 @@ async function main() {
     );
   });
 
+  return { app, config, store };
+}
+
+async function startServer(config = createConfig()) {
+  const { app, store } = await createApp(config);
+
   const server = app.listen(config.port, () => {
     console.log(`FuelUp running on port ${config.port} using ${store.mode} store.`);
   });
@@ -291,9 +296,15 @@ async function main() {
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
+
+  return { app, server, store, config };
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  startServer().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+module.exports = { createApp, createStore, startServer };

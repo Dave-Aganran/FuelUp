@@ -20,6 +20,8 @@ FuelUp is a trading and ordering platform that connects buyers with downstream o
 - CSRF protection for operator state changes
 - Protected inventory price and stock updates
 - Audit trail for order status and inventory changes
+- Automated integration tests for marketplace, ordering, login, inventory, and protected updates
+- GitHub Actions CI
 - Production-oriented Render configuration
 
 ## Local Run
@@ -38,6 +40,15 @@ http://localhost:3000
 Without `DATABASE_URL`, the app uses seeded in-memory demo data.
 
 To run with PostgreSQL, set `DATABASE_URL` before starting the app. The database schema and seed data are created automatically on startup.
+
+## Checks
+
+```powershell
+pnpm run check
+pnpm test
+```
+
+In this Codex shell, Node may not be on system `PATH`; the same checks were verified with the bundled Node runtime.
 
 ## Render Deployment
 
@@ -90,6 +101,8 @@ Completed baseline:
 - CSRF protection for status updates and logout
 - Audited status and inventory changes
 - Protected price and stock controls
+- Integration test coverage for critical flows
+- GitHub Actions CI for pushes and pull requests
 - Database indexes for common operational paths
 - Graceful shutdown
 - Health and readiness checks
@@ -103,4 +116,4 @@ Remaining production blockers:
 - Payment collection and settlement reconciliation
 - Notification channels for buyers and outlets
 - Backups, observability, and incident response procedures
-- Automated tests in CI
+- Wider test coverage around PostgreSQL migrations and failure states
