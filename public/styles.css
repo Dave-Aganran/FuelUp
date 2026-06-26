@@ -1421,3 +1421,273 @@ footer {
     border-bottom: 1px solid var(--line);
   }
 }
+
+/* Premium correction pass: quieter procurement-console look. */
+:root {
+  --bg: #f4f1ea;
+  --surface: #fffdf8;
+  --ink: #121716;
+  --muted: #69726d;
+  --line: #ded6c8;
+  --brand: #0f5f50;
+  --brand-dark: #0a332f;
+  --gold: #b8892f;
+  --gold-soft: #efe3c7;
+  --shadow: 0 18px 60px rgba(25, 23, 18, 0.08);
+}
+
+body {
+  background: var(--bg);
+}
+
+.app-layout {
+  grid-template-columns: 270px minmax(0, 1fr);
+}
+
+.sidebar {
+  padding: 28px 18px;
+  background: #07110f;
+  border-right: 1px solid rgba(184, 137, 47, 0.24);
+  box-shadow: 16px 0 60px rgba(7, 17, 15, 0.12);
+}
+
+.sidebar .brand {
+  padding: 0 6px 12px;
+}
+
+.sidebar .brand-mark {
+  border-radius: 6px;
+  background: #d0a24a;
+  box-shadow: none;
+}
+
+.side-nav {
+  gap: 5px;
+}
+
+.side-nav a {
+  border-radius: 6px;
+  padding: 11px 12px;
+}
+
+.side-nav a:hover,
+.side-nav .nav-cta {
+  background: #10221f;
+  border-color: rgba(208, 162, 74, 0.28);
+}
+
+.side-nav .nav-cta {
+  background: #d0a24a;
+}
+
+.sidebar-card {
+  border-color: rgba(208, 162, 74, 0.28);
+  background: #0f201d;
+}
+
+.page-frame {
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, 0.76), rgba(244, 241, 234, 0.96)),
+    radial-gradient(circle at 80% 0%, rgba(184, 137, 47, 0.12), transparent 30rem);
+}
+
+.app-shell {
+  width: min(1180px, calc(100% - 48px));
+  padding-top: 26px;
+}
+
+.hero {
+  grid-template-columns: minmax(0, 0.94fr) minmax(360px, 0.82fr);
+  min-height: 500px;
+  padding: clamp(28px, 4vw, 48px);
+  background: var(--surface);
+  border: 1px solid rgba(123, 98, 53, 0.16);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.hero::before,
+.hero::after {
+  display: none;
+}
+
+.hero .eyebrow,
+.eyebrow {
+  color: var(--gold);
+}
+
+.hero h1 {
+  max-width: 710px;
+  font-size: clamp(2.7rem, 5vw, 4.75rem);
+  line-height: 0.98;
+}
+
+.hero p,
+.dashboard-head p {
+  color: var(--muted);
+}
+
+.hero .button {
+  background: var(--brand-dark);
+  color: #fff;
+  box-shadow: none;
+}
+
+.hero .button.secondary,
+.button.secondary {
+  background: var(--gold-soft);
+  color: #4f3910;
+}
+
+.hero .button.ghost,
+.button.ghost {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.market-preview {
+  align-self: stretch;
+}
+
+.hero-media {
+  min-height: 300px;
+  border: 0;
+  box-shadow: none;
+}
+
+.hero-media img {
+  min-height: 300px;
+  border-radius: 8px;
+}
+
+.hero-media figcaption {
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  background: rgba(7, 17, 15, 0.82);
+}
+
+.terminal-card {
+  background: #fffaf0;
+  border-color: rgba(123, 98, 53, 0.15);
+  box-shadow: none;
+}
+
+.terminal-card dt,
+.terminal-card small,
+.route-card {
+  color: var(--muted);
+}
+
+.terminal-card dd,
+.terminal-card strong {
+  color: var(--ink);
+}
+
+.accent-card {
+  background: #111a18;
+}
+
+.accent-card span,
+.accent-card small,
+.accent-card strong {
+  color: #fff8e8;
+}
+
+.route-card {
+  background: #fffaf0;
+}
+
+.route-card i {
+  background: linear-gradient(90deg, rgba(184, 137, 47, 0.18), rgba(184, 137, 47, 0.82));
+}
+
+.trust-strip,
+.filter-bar,
+.listing-card,
+.form-card,
+.order-context,
+.summary-card,
+.metric-card,
+.table-wrap,
+.activity-panel {
+  background: var(--surface);
+  border-color: rgba(123, 98, 53, 0.13);
+  box-shadow: var(--shadow);
+}
+
+.trust-strip {
+  margin-top: 18px;
+}
+
+.filter-bar {
+  box-shadow: none;
+}
+
+.listing-card {
+  padding: 12px;
+  gap: 14px;
+}
+
+.product-art {
+  min-height: 220px;
+  border-radius: 7px;
+}
+
+.product-art img {
+  height: 240px;
+}
+
+.product-art span {
+  display: none;
+}
+
+.listing-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(184, 137, 47, 0.35);
+  box-shadow: 0 24px 70px rgba(25, 23, 18, 0.12);
+}
+
+.listing-meta span {
+  background: #f4ead3;
+  color: #5f4719;
+}
+
+.button,
+button {
+  background: var(--brand);
+  box-shadow: none;
+}
+
+.button:hover,
+button:hover {
+  background: var(--brand-dark);
+}
+
+input,
+select,
+textarea {
+  border-color: #d8d0c2;
+  background: #fffdfa;
+}
+
+footer {
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+@media (max-width: 900px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    height: auto;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+  }
+}

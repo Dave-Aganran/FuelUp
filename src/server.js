@@ -106,7 +106,7 @@ async function createApp(config = createConfig()) {
           defaultSrc: ["'self'"],
           styleSrc: ["'self'", "'unsafe-inline'"],
           scriptSrc: ["'self'"],
-          imgSrc: ["'self'", "data:"],
+          imgSrc: ["'self'", "data:", "https://image.pollinations.ai"],
           baseUri: ["'self'"],
           formAction: ["'self'"]
         }

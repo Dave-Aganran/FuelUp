@@ -23,10 +23,20 @@ function productInitial(name) {
 
 function productImage(name) {
   const normalized = String(name || "").toLowerCase();
-  if (normalized.includes("lpg") || normalized.includes("gas")) return "/assets/product-lpg.png";
-  if (normalized.includes("oil")) return "/assets/product-lubricants.png";
-  if (normalized.includes("ago") || normalized.includes("diesel")) return "/assets/product-diesel.png";
-  return "/assets/product-fuel.png";
+  if (normalized.includes("lpg") || normalized.includes("gas")) {
+    return "https://image.pollinations.ai/prompt/premium%20photorealistic%20LPG%20gas%20cylinders%20at%20a%20modern%20downstream%20energy%20depot%20corporate%20product%20photography%20no%20text?width=1100&height=760&seed=214&nologo=true";
+  }
+  if (normalized.includes("oil")) {
+    return "https://image.pollinations.ai/prompt/premium%20photorealistic%20engine%20oil%20lubricant%20containers%20in%20a%20modern%20oil%20and%20gas%20warehouse%20corporate%20product%20photography%20no%20text?width=1100&height=760&seed=318&nologo=true";
+  }
+  if (normalized.includes("ago") || normalized.includes("diesel")) {
+    return "https://image.pollinations.ai/prompt/premium%20photorealistic%20diesel%20fuel%20tanker%20truck%20at%20a%20clean%20industrial%20loading%20bay%20oil%20and%20gas%20corporate%20photography%20no%20text?width=1100&height=760&seed=512&nologo=true";
+  }
+  return "https://image.pollinations.ai/prompt/premium%20photorealistic%20petrol%20fuel%20pump%20and%20storage%20terminal%20clean%20modern%20downstream%20oil%20and%20gas%20corporate%20photography%20no%20text?width=1100&height=760&seed=728&nologo=true";
+}
+
+function heroImage() {
+  return "https://image.pollinations.ai/prompt/premium%20photorealistic%20oil%20and%20gas%20fuel%20terminal%20at%20dusk%20storage%20tanks%20tanker%20truck%20corporate%20photography%20no%20text?width=1400&height=920&seed=901&nologo=true";
 }
 
 function statusLabel(status) {
@@ -163,7 +173,7 @@ function marketplacePage(products, storeMode) {
       return `
         <article class="listing-card">
           <div class="product-art">
-            <img src="${productImage(product.name)}" alt="${escapeHtml(product.name)} supply image" loading="lazy">
+            <img src="${escapeHtml(productImage(product.name))}" alt="${escapeHtml(product.name)} supply image" loading="lazy">
             <span>${productInitial(product.name)}</span>
           </div>
           <div class="listing-head">
@@ -216,7 +226,7 @@ function marketplacePage(products, storeMode) {
         </div>
         <aside class="market-preview" aria-label="Marketplace snapshot">
           <figure class="hero-media">
-            <img src="/assets/hero-terminal.png" alt="Premium oil and gas terminal at dusk">
+            <img src="${escapeHtml(heroImage())}" alt="Premium oil and gas terminal at dusk">
             <figcaption>Verified station supply network</figcaption>
           </figure>
           <div class="terminal-card">
