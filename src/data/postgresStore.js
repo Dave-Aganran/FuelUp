@@ -17,6 +17,7 @@ function createPostgresStore(pool) {
           p.unit,
           p.price::float,
           p.available_quantity::float,
+          p.low_stock_threshold::float,
           o.name AS outlet_name,
           o.city,
           o.address,
@@ -41,6 +42,7 @@ function createPostgresStore(pool) {
             p.unit,
             p.price::float,
             p.available_quantity::float,
+            p.low_stock_threshold::float,
             o.name AS outlet_name,
             o.city,
             o.address,
@@ -178,6 +180,7 @@ function createPostgresStore(pool) {
           p.unit,
           p.price::float,
           p.available_quantity::float,
+          p.low_stock_threshold::float,
           p.updated_at,
           o.name AS outlet_name,
           o.city,
@@ -218,7 +221,7 @@ function createPostgresStore(pool) {
       try {
         await client.query("BEGIN");
         const current = await client.query(
-          "SELECT id, price::float, available_quantity::float FROM products WHERE id = $1 FOR UPDATE",
+          "SELECT id, price::float, available_quantity::float, low_stock_threshold::float FROM products WHERE id = $1 FOR UPDATE",
           [productId]
         );
         if (current.rowCount === 0) {
@@ -229,11 +232,11 @@ function createPostgresStore(pool) {
         const updated = await client.query(
           `
             UPDATE products
-            SET price = $1, available_quantity = $2, updated_at = NOW()
-            WHERE id = $3
-            RETURNING id, price::float, available_quantity::float, updated_at
+            SET price = $1, available_quantity = $2, low_stock_threshold = $3, updated_at = NOW()
+            WHERE id = $4
+            RETURNING id, price::float, available_quantity::float, low_stock_threshold::float, updated_at
           `,
-          [input.price, input.availableQuantity, productId]
+          [input.price, input.availableQuantity, input.lowStockThreshold || 0, productId]
         );
 
         await client.query(
@@ -246,11 +249,17 @@ function createPostgresStore(pool) {
             actor?.email || null,
             productId,
             JSON.stringify({
-              before: { price: before.price, available_quantity: before.available_quantity },
+              before: {
+                price: before.price,
+                available_quantity: before.available_quantity,
+                low_stock_threshold: before.low_stock_threshold
+              },
               after: {
                 price: updated.rows[0].price,
-                available_quantity: updated.rows[0].available_quantity
-              }
+                available_quantity: updated.rows[0].available_quantity,
+                low_stock_threshold: updated.rows[0].low_stock_threshold
+              },
+              reason: input.adjustmentReason
             })
           ]
         );
@@ -316,6 +325,55 @@ function createPostgresStore(pool) {
         entityType: "user",
         entityId: userId,
         action: isActive ? "user.enabled" : "user.disabled",
+        details: { email: rows[0].email }
+      });
+      return rows[0];
+    },
+
+    async createPasswordReset(userId, actor) {
+      const token = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
+      const { rows } = await pool.query(
+        `
+          UPDATE users
+          SET password_reset_token = $1,
+              password_reset_expires_at = NOW() + INTERVAL '24 hours',
+              updated_at = NOW()
+          WHERE id = $2
+          RETURNING id, email, name, role, is_active, password_reset_token, password_reset_expires_at
+        `,
+        [token, userId]
+      );
+      if (rows.length === 0) throw new Error("User not found.");
+      await this.recordAuditEvent({
+        actor,
+        entityType: "user",
+        entityId: userId,
+        action: "user.password_reset_created",
+        details: { email: rows[0].email }
+      });
+      return rows[0];
+    },
+
+    async resetPasswordByToken(token, passwordHash) {
+      const { rows } = await pool.query(
+        `
+          UPDATE users
+          SET password_hash = $1,
+              password_reset_token = NULL,
+              password_reset_expires_at = NULL,
+              is_active = TRUE,
+              updated_at = NOW()
+          WHERE password_reset_token = $2 AND password_reset_expires_at > NOW()
+          RETURNING id, email, name, role, is_active
+        `,
+        [passwordHash, token]
+      );
+      if (rows.length === 0) throw new Error("Invalid or expired reset token.");
+      await this.recordAuditEvent({
+        actor: { email: rows[0].email },
+        entityType: "user",
+        entityId: rows[0].id,
+        action: "user.password_reset_completed",
         details: { email: rows[0].email }
       });
       return rows[0];
@@ -506,6 +564,62 @@ function createPostgresStore(pool) {
       return this.findOrderForBuyer(reference, buyerEmail);
     },
 
+    async decideCancellation(orderId, input, actor) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const current = await client.query(
+          "SELECT id, order_reference, product_id, quantity::float, status FROM orders WHERE id = $1 FOR UPDATE",
+          [orderId]
+        );
+        if (current.rowCount === 0) throw new Error("Order not found.");
+
+        const order = current.rows[0];
+        const nextStatus = input.decision === "approved" ? "cancelled" : order.status;
+        const { rows } = await client.query(
+          `
+            UPDATE orders
+            SET cancellation_decision = $1,
+                cancellation_decision_reason = $2,
+                cancellation_decided_by = $3,
+                cancellation_decided_at = NOW(),
+                status = $4,
+                updated_at = NOW()
+            WHERE id = $5
+            RETURNING *
+          `,
+          [input.decision, input.reason, actor?.id || null, nextStatus, orderId]
+        );
+
+        if (input.decision === "approved" && order.status !== "cancelled") {
+          await client.query(
+            "UPDATE products SET available_quantity = available_quantity + $1, updated_at = NOW() WHERE id = $2",
+            [order.quantity, order.product_id]
+          );
+        }
+
+        await client.query(
+          `
+            INSERT INTO audit_events (actor_user_id, actor_email, entity_type, entity_id, action, details)
+            VALUES ($1, $2, 'order', $3, 'order.cancellation_decided', $4)
+          `,
+          [
+            actor?.id || null,
+            actor?.email || null,
+            orderId,
+            JSON.stringify({ order_reference: order.order_reference, decision: input.decision, reason: input.reason })
+          ]
+        );
+        await client.query("COMMIT");
+        return rows[0];
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
     async updatePaymentStatus(orderId, paymentStatus, actor) {
       const client = await pool.connect();
       try {
@@ -544,7 +658,17 @@ function createPostgresStore(pool) {
       }
     },
 
-    async listSettlementRows() {
+    async listSettlementRows(filters = {}) {
+      const params = [];
+      const clauses = ["ord.payment_status = 'paid'"];
+      if (filters.from) {
+        params.push(filters.from);
+        clauses.push(`COALESCE(ord.paid_at, ord.created_at) >= $${params.length}`);
+      }
+      if (filters.to) {
+        params.push(filters.to);
+        clauses.push(`COALESCE(ord.paid_at, ord.created_at) <= $${params.length}`);
+      }
       const { rows } = await pool.query(`
         SELECT
           ord.order_reference,
@@ -560,10 +684,50 @@ function createPostgresStore(pool) {
         FROM orders ord
         JOIN outlets o ON o.id = ord.outlet_id
         JOIN organizations org ON org.id = o.organization_id
-        WHERE ord.payment_status = 'paid'
+        WHERE ${clauses.join(" AND ")}
         ORDER BY ord.paid_at DESC NULLS LAST, ord.created_at DESC
-      `);
+      `, params);
       return rows;
+    },
+
+    async updateOrganization(id, input, actor) {
+      const { rows } = await pool.query(
+        "UPDATE organizations SET name = $1, contact_email = $2 WHERE id = $3 RETURNING *",
+        [input.name, input.contactEmail, id]
+      );
+      if (rows.length === 0) throw new Error("Organization not found.");
+      await this.recordAuditEvent({ actor, entityType: "organization", entityId: id, action: "organization.updated", details: input });
+      return rows[0];
+    },
+
+    async updateOutlet(id, input, actor) {
+      const { rows } = await pool.query(
+        `
+          UPDATE outlets
+          SET organization_id = $1, name = $2, city = $3, address = $4, phone = $5, is_open = $6
+          WHERE id = $7
+          RETURNING *
+        `,
+        [input.organizationId, input.name, input.city, input.address, input.phone, input.isOpen, id]
+      );
+      if (rows.length === 0) throw new Error("Outlet not found.");
+      await this.recordAuditEvent({ actor, entityType: "outlet", entityId: id, action: "outlet.updated", details: input });
+      return rows[0];
+    },
+
+    async updateProduct(id, input, actor) {
+      const { rows } = await pool.query(
+        `
+          UPDATE products
+          SET outlet_id = $1, name = $2, unit = $3, price = $4, available_quantity = $5, updated_at = NOW()
+          WHERE id = $6
+          RETURNING *
+        `,
+        [input.outletId, input.name, input.unit, input.price, input.availableQuantity, id]
+      );
+      if (rows.length === 0) throw new Error("Product not found.");
+      await this.recordAuditEvent({ actor, entityType: "product", entityId: id, action: "product.updated", details: input });
+      return rows[0];
     },
 
     async createNotification(input) {

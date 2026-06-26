@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS products (
   unit TEXT NOT NULL DEFAULT 'litre',
   price NUMERIC(12, 2) NOT NULL,
   available_quantity NUMERIC(12, 2) NOT NULL,
+  low_stock_threshold NUMERIC(12, 2) NOT NULL DEFAULT 0,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -47,6 +48,10 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_payload JSONB,
   cancellation_requested BOOLEAN NOT NULL DEFAULT FALSE,
   cancellation_reason TEXT,
+  cancellation_decision TEXT CHECK (cancellation_decision IN ('approved', 'rejected')),
+  cancellation_decision_reason TEXT,
+  cancellation_decided_at TIMESTAMPTZ,
+  cancellation_decided_by INTEGER REFERENCES users(id),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'ready', 'completed', 'cancelled')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -59,6 +64,10 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'operator' CHECK (role IN ('admin', 'operator')),
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  invite_token TEXT UNIQUE,
+  invite_expires_at TIMESTAMPTZ,
+  password_reset_token TEXT UNIQUE,
+  password_reset_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -103,7 +112,16 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_payload JSONB;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_requested BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_decision TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_decision_reason TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_decided_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_decided_by INTEGER REFERENCES users(id);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE products ADD COLUMN IF NOT EXISTS low_stock_threshold NUMERIC(12, 2) NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS invite_token TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS invite_expires_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_products_outlet_id ON products(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
@@ -112,6 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_payment_reference ON orders(payment_refere
 CREATE INDEX IF NOT EXISTS idx_orders_reference ON orders(order_reference);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_outlet_id ON orders(outlet_id);
+CREATE INDEX IF NOT EXISTS idx_orders_cancellation_requested ON orders(cancellation_requested);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_user_outlets_outlet_id ON user_outlets(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);

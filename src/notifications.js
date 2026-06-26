@@ -27,6 +27,30 @@ function paymentNotification(order) {
 async function dispatchNotification(store, config, notification) {
   const event = await store.createNotification(notification);
 
+  if (config.resendApiKey) {
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.resendApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: config.notificationFromEmail,
+          to: [notification.recipientEmail],
+          subject: notification.subject,
+          text: notification.body
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      await store.updateNotificationStatus(event.id, response.ok ? "sent" : "failed", payload);
+      return event;
+    } catch (error) {
+      await store.updateNotificationStatus(event.id, "failed", { error: error.message });
+      return event;
+    }
+  }
+
   if (!config.notificationWebhookUrl) {
     logEvent("info", "notification.queued", {
       notificationId: event.id,

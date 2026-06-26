@@ -323,6 +323,28 @@ function trackOrderPage({ storeMode, order = null, error = "", message = "" }) {
   });
 }
 
+function resetPasswordPage({ storeMode, token = "", error = "", message = "" }) {
+  return layout({
+    title: "Reset Password",
+    storeMode,
+    body: `
+      <section class="auth-shell">
+        <div class="auth-card">
+          <p class="eyebrow">Account security</p>
+          <h1>Reset password</h1>
+          ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
+          ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
+          <form method="post" action="/reset-password">
+            <input type="hidden" name="token" value="${escapeHtml(token)}">
+            <label>New password<input required type="password" name="password" minlength="10"></label>
+            <button class="button wide" type="submit">Set password</button>
+          </form>
+        </div>
+      </section>
+    `
+  });
+}
+
 function auditFeed(events) {
   if (!events || events.length === 0) {
     return `<p class="empty-panel compact">No audit events yet.</p>`;
@@ -410,6 +432,17 @@ function dashboardPage({ orders, summary, auditEvents, storeMode, message = "", 
                   </select>
                   <button type="submit">Payment</button>
                 </form>
+                ${order.cancellation_requested && !order.cancellation_decision ? `
+                  <form class="inline-form" method="post" action="/orders/${order.id}/cancellation">
+                    <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+                    <select name="decision" aria-label="Cancellation decision">
+                      <option value="approved">approve cancel</option>
+                      <option value="rejected">reject cancel</option>
+                    </select>
+                    <input name="reason" placeholder="Decision reason">
+                    <button type="submit">Decide</button>
+                  </form>
+                ` : ""}
               </td>
             </tr>
           `
@@ -482,6 +515,10 @@ function usersPage({ users, assignments = [], outlets = [], storeMode, message =
           <input type="hidden" name="isActive" value="${item.is_active ? "false" : "true"}">
           <button type="submit">${item.is_active ? "Disable" : "Enable"}</button>
         </form>
+        <form class="inline-form" method="post" action="/admin/users/${item.id}/reset">
+          <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+          <button type="submit">Reset</button>
+        </form>
         <form class="inline-form" method="post" action="/admin/users/${item.id}/outlets">
           <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
           <select name="outletId" aria-label="Assign outlet">
@@ -504,7 +541,7 @@ function usersPage({ users, assignments = [], outlets = [], storeMode, message =
         <div><p class="eyebrow">Admin</p><h1>User management</h1><p>Signed in as ${escapeHtml(user.email)}.</p></div>
         <div class="hero-actions">
           <a class="button secondary" href="/onboarding">Onboard outlets</a>
-          <a class="button secondary" href="/settlements.csv">Export settlements</a>
+          <a class="button secondary" href="/settlements">Settlements</a>
           <a class="button secondary" href="/notifications">Notification outbox</a>
         </div>
       </section>
@@ -528,6 +565,40 @@ function usersPage({ users, assignments = [], outlets = [], storeMode, message =
       </section>
       <section class="table-wrap spaced">
         <table><thead><tr><th>User</th><th>Organization</th><th>Outlet</th></tr></thead><tbody>${assignmentRows || `<tr><td colspan="3" class="empty">No outlet assignments yet.</td></tr>`}</tbody></table>
+      </section>
+    `
+  });
+}
+
+function settlementsPage({ rows, filters, storeMode }) {
+  const tableRows = rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.order_reference)}</td>
+      <td>${escapeHtml(row.buyer_email)}</td>
+      <td>${escapeHtml(row.organization_name)} / ${escapeHtml(row.outlet_name)}</td>
+      <td>${currency.format(row.total_amount || 0)}</td>
+      <td>${escapeHtml(row.payment_reference || "")}</td>
+      <td>${escapeHtml(row.paid_at || "")}</td>
+    </tr>
+  `).join("");
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value)).toString();
+  return layout({
+    title: "Settlements",
+    storeMode,
+    body: `
+      <section class="dashboard-head">
+        <div><p class="eyebrow">Finance</p><h1>Settlement reconciliation</h1><p>Review paid orders and export settlement records.</p></div>
+        <a class="button secondary" href="/settlements.csv${query ? `?${query}` : ""}">Export CSV</a>
+      </section>
+      <section class="form-card">
+        <form class="field-row" method="get" action="/settlements">
+          <label>From<input type="date" name="from" value="${escapeHtml(filters.from || "")}"></label>
+          <label>To<input type="date" name="to" value="${escapeHtml(filters.to || "")}"></label>
+          <button class="button" type="submit">Filter</button>
+        </form>
+      </section>
+      <section class="table-wrap spaced">
+        <table><thead><tr><th>Order</th><th>Buyer</th><th>Outlet</th><th>Amount</th><th>Reference</th><th>Paid at</th></tr></thead><tbody>${tableRows || `<tr><td colspan="6" class="empty">No paid orders for this period.</td></tr>`}</tbody></table>
       </section>
     `
   });
@@ -605,6 +676,14 @@ function inventoryPage({ products, auditEvents, storeMode, message = "", error =
                 Stock
                 <input required type="number" name="availableQuantity" min="0" step="0.01" value="${escapeHtml(product.available_quantity)}">
               </label>
+              <label>
+                Low alert
+                <input required type="number" name="lowStockThreshold" min="0" step="0.01" value="${escapeHtml(product.low_stock_threshold || 0)}">
+              </label>
+              <label>
+                Reason
+                <input required name="adjustmentReason" placeholder="Adjustment reason">
+              </label>
               <button type="submit">Save</button>
             </form>
           </td>
@@ -666,6 +745,8 @@ module.exports = {
   orderFormPage,
   orderSuccessPage,
   onboardingPage,
+  resetPasswordPage,
+  settlementsPage,
   trackOrderPage,
   usersPage
 };

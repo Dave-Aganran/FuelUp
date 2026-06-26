@@ -124,7 +124,13 @@ describe("FuelUp core flows", () => {
         cookie: cookies,
         "content-type": "application/x-www-form-urlencoded"
       },
-      body: formBody({ price: "745", availableQuantity: "17500", csrfToken: csrf })
+      body: formBody({
+        price: "745",
+        availableQuantity: "17500",
+        lowStockThreshold: "1000",
+        adjustmentReason: "CI inventory verification",
+        csrfToken: csrf
+      })
     });
     assert.equal(inventoryPost.status, 302);
 
@@ -205,6 +211,14 @@ describe("FuelUp core flows", () => {
     });
     assert.equal(disable.status, 302);
 
+    const reset = await fetch(`${baseUrl}/admin/users/2/reset`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { cookie: cookies, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ csrfToken: assignCsrf })
+    });
+    assert.equal(reset.status, 302);
+
     const onboarding = await fetch(`${baseUrl}/onboarding`, { headers: { cookie: cookies } });
     assert.equal(onboarding.status, 200);
     const onboardingHtml = await onboarding.text();
@@ -254,6 +268,23 @@ describe("FuelUp core flows", () => {
     });
     assert.equal(cancel.status, 200);
     assert.match(await cancel.text(), /Cancellation request sent/);
+
+    const login = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ email: "ops@example.com", password: "StrongPass123!", next: "/dashboard" })
+    });
+    const cookies = parseCookies(login.headers);
+    const dashboard = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: cookies } });
+    const csrf = csrfFrom(await dashboard.text());
+    const decision = await fetch(`${baseUrl}/orders/2/cancellation`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { cookie: cookies, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ decision: "approved", reason: "Buyer request accepted", csrfToken: csrf })
+    });
+    assert.equal(decision.status, 302);
   });
 
   it("initializes Paystack payments and marks callback payments paid", async () => {
@@ -352,5 +383,20 @@ describe("FuelUp core flows", () => {
     const settlements = await fetch(`${baseUrl}/settlements.csv`, { headers: { cookie: cookies } });
     assert.equal(settlements.status, 200);
     assert.match(await settlements.text(), /order_reference,buyer_email,organization/);
+
+    const settlementPage = await fetch(`${baseUrl}/settlements`, { headers: { cookie: cookies } });
+    assert.equal(settlementPage.status, 200);
+    assert.match(await settlementPage.text(), /Settlement reconciliation/);
+
+    const resetNotification = notificationRows.find((item) => item.subject === "FuelUp password reset");
+    assert.ok(resetNotification);
+    const token = resetNotification.body.match(/token=([^ ]+)/)[1];
+    const reset = await fetch(`${baseUrl}/reset-password`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      redirect: "manual",
+      body: formBody({ token, password: "NewOperatorPass123!" })
+    });
+    assert.equal(reset.status, 302);
   });
 });

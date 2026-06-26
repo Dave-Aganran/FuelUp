@@ -33,6 +33,8 @@ function createConfig() {
     paystackCallbackUrl: process.env.PAYSTACK_CALLBACK_URL || "",
     notificationWebhookUrl: process.env.NOTIFICATION_WEBHOOK_URL || "",
     notificationFromEmail: process.env.NOTIFICATION_FROM_EMAIL || "no-reply@fuelup.local",
+    resendApiKey: process.env.RESEND_API_KEY || "",
+    autoMigrate: readBoolean("AUTO_MIGRATE", true),
     appName: "FuelUp"
   };
 }

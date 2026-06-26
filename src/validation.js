@@ -80,7 +80,9 @@ function normalizePaymentStatus(value) {
 function normalizeInventoryInput(body) {
   const price = Number(body.price);
   const availableQuantity = Number(body.availableQuantity);
-  const input = { price, availableQuantity };
+  const lowStockThreshold = Number(body.lowStockThreshold || 0);
+  const adjustmentReason = cleanLongText(body.adjustmentReason, 300);
+  const input = { price, availableQuantity, lowStockThreshold, adjustmentReason };
   const errors = [];
 
   if (!Number.isFinite(price) || price <= 0) {
@@ -94,6 +96,12 @@ function normalizeInventoryInput(body) {
   }
   if (Number.isFinite(availableQuantity) && availableQuantity > 100000000) {
     errors.push("Available quantity is above the allowed limit.");
+  }
+  if (!Number.isFinite(lowStockThreshold) || lowStockThreshold < 0) {
+    errors.push("Low-stock threshold cannot be negative.");
+  }
+  if (adjustmentReason.length < 3) {
+    errors.push("Stock adjustment reason is required.");
   }
 
   return { input, errors };
@@ -177,14 +185,38 @@ function normalizeCancellationInput(body) {
   return { input, errors };
 }
 
+function normalizeCancellationDecisionInput(body) {
+  const input = {
+    decision: cleanText(body.decision, 20),
+    reason: cleanLongText(body.reason, 400)
+  };
+  const errors = [];
+  if (!["approved", "rejected"].includes(input.decision)) errors.push("Choose approve or reject.");
+  if (input.reason.length < 3) errors.push("Decision reason is required.");
+  return { input, errors };
+}
+
+function normalizePasswordResetInput(body) {
+  const input = {
+    token: cleanText(body.token, 120),
+    password: String(body.password || "")
+  };
+  const errors = [];
+  if (input.token.length < 20) errors.push("Reset token is invalid.");
+  if (input.password.length < 10) errors.push("Password must be at least 10 characters.");
+  return { input, errors };
+}
+
 module.exports = {
   allowedPaymentStatuses,
   allowedStatuses,
   normalizeCancellationInput,
+  normalizeCancellationDecisionInput,
   normalizeInventoryInput,
   normalizeOrganizationInput,
   normalizeOrderInput,
   normalizeOutletInput,
+  normalizePasswordResetInput,
   normalizePaymentStatus,
   normalizeProductInput,
   normalizeStatus,

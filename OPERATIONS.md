@@ -19,6 +19,8 @@
 - `PAYSTACK_CALLBACK_URL`
 - `NOTIFICATION_WEBHOOK_URL` optional
 - `NOTIFICATION_FROM_EMAIL`
+- `RESEND_API_KEY` optional
+- `AUTO_MIGRATE=true`
 - `TRUST_PROXY=true`
 
 ## Backup And Restore
@@ -56,11 +58,19 @@ Use Render logs and audit events to reconcile payment initialization, callbacks,
 
 ## Notifications
 
-FuelUp records notification events for buyer-facing order, payment, and cancellation messages. If `NOTIFICATION_WEBHOOK_URL` is set, FuelUp posts notification payloads to that endpoint. If not set, notifications remain queued and visible at `/notifications` for admins.
+FuelUp records notification events for buyer-facing order, payment, and cancellation messages.
+
+Delivery order:
+
+1. If `RESEND_API_KEY` is set, FuelUp sends email through Resend.
+2. Else if `NOTIFICATION_WEBHOOK_URL` is set, FuelUp posts notification payloads to that endpoint.
+3. Else notifications remain queued and visible at `/notifications` for admins.
 
 ## Outlet Access
 
 Admins assign users to outlets from `/admin/users`. Operators only see dashboard orders and inventory for assigned outlets.
+
+Admins can also disable/reactivate users and generate password reset links from `/admin/users`.
 
 ## Settlements
 
@@ -69,3 +79,24 @@ Admins can export paid-order settlements from:
 ```text
 https://fuelup-poc.onrender.com/settlements.csv
 ```
+
+Admins can review filtered settlements from:
+
+```text
+https://fuelup-poc.onrender.com/settlements
+```
+
+## Cancellation Operations
+
+Buyers request cancellation from `/track`. Operators review cancellation requests on `/dashboard`, approve or reject them, and provide a reason. Approved cancellations set the order to `cancelled` and restore product stock.
+
+## Inventory Controls
+
+Inventory updates require:
+
+- Price
+- Current stock
+- Low-stock threshold
+- Adjustment reason
+
+Low-stock thresholds are stored for alerting and future dashboard warning work.

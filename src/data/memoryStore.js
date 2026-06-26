@@ -50,6 +50,7 @@ const users = [];
 const auditEvents = [];
 const notificationEvents = [];
 const userOutlets = [];
+let tokenCounter = 1;
 
 function orderReference(id) {
   return `FUP-${String(id).padStart(6, "0")}`;
@@ -187,13 +188,22 @@ function createMemoryStore() {
 
       product.price = Number(input.price);
       product.available_quantity = Number(input.availableQuantity);
+      product.low_stock_threshold = Number(input.lowStockThreshold || 0);
 
       recordAuditEvent({
         actor,
         entityType: "product",
         entityId: product.id,
         action: "inventory.updated",
-        details: { before, after: { price: product.price, available_quantity: product.available_quantity } }
+        details: {
+          before,
+          after: {
+            price: product.price,
+            available_quantity: product.available_quantity,
+            low_stock_threshold: product.low_stock_threshold
+          },
+          reason: input.adjustmentReason
+        }
       });
 
       return withOutletAndOrganization(product);
@@ -226,6 +236,28 @@ function createMemoryStore() {
       user.is_active = isActive;
       user.updated_at = new Date().toISOString();
       recordAuditEvent({ actor, entityType: "user", entityId: userId, action: isActive ? "user.enabled" : "user.disabled", details: { email: user.email } });
+      return user;
+    },
+
+    async createPasswordReset(userId, actor) {
+      const user = users.find((item) => item.id === userId);
+      if (!user) throw new Error("User not found.");
+      user.password_reset_token = `reset-${tokenCounter++}-${Date.now()}`;
+      user.password_reset_expires_at = new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
+      recordAuditEvent({ actor, entityType: "user", entityId: userId, action: "user.password_reset_created", details: { email: user.email } });
+      return user;
+    },
+
+    async resetPasswordByToken(token, passwordHash) {
+      const user = users.find((item) => item.password_reset_token === token);
+      if (!user) throw new Error("Invalid reset token.");
+      if (new Date(user.password_reset_expires_at).getTime() < Date.now()) throw new Error("Reset token has expired.");
+      user.password_hash = passwordHash;
+      user.password_reset_token = "";
+      user.password_reset_expires_at = null;
+      user.is_active = true;
+      user.updated_at = new Date().toISOString();
+      recordAuditEvent({ actor: { email: user.email }, entityType: "user", entityId: user.id, action: "user.password_reset_completed", details: { email: user.email } });
       return user;
     },
 
@@ -320,7 +352,8 @@ function createMemoryStore() {
         name: input.name,
         unit: input.unit,
         price: Number(input.price),
-        available_quantity: Number(input.availableQuantity)
+        available_quantity: Number(input.availableQuantity),
+        low_stock_threshold: 0
       };
       products.push(product);
       recordAuditEvent({ actor, entityType: "product", entityId: product.id, action: "product.created", details: product });
@@ -352,6 +385,31 @@ function createMemoryStore() {
       return withOrderDetails(order);
     },
 
+    async decideCancellation(orderId, input, actor) {
+      const order = orders.find((item) => item.id === orderId);
+      if (!order) throw new Error("Order not found.");
+      order.cancellation_decision = input.decision;
+      order.cancellation_decision_reason = input.reason;
+      order.cancellation_decided_by = actor?.id || null;
+      order.cancellation_decided_at = new Date().toISOString();
+      if (input.decision === "approved" && order.status !== "cancelled") {
+        order.status = "cancelled";
+        const product = products.find((item) => item.id === order.product_id);
+        if (product) {
+          product.available_quantity = Number(product.available_quantity) + Number(order.quantity);
+        }
+      }
+      order.updated_at = new Date().toISOString();
+      recordAuditEvent({
+        actor,
+        entityType: "order",
+        entityId: order.id,
+        action: "order.cancellation_decided",
+        details: { order_reference: order.order_reference, decision: input.decision, reason: input.reason }
+      });
+      return withOrderDetails(order);
+    },
+
     async updatePaymentStatus(orderId, paymentStatus, actor) {
       const order = orders.find((item) => item.id === orderId);
       if (!order) throw new Error("Order not found.");
@@ -368,10 +426,55 @@ function createMemoryStore() {
       return withOrderDetails(order);
     },
 
-    async listSettlementRows() {
+    async listSettlementRows(filters = {}) {
       return orders
         .filter((order) => order.payment_status === "paid")
+        .filter((order) => !filters.from || new Date(order.paid_at || order.created_at) >= new Date(filters.from))
+        .filter((order) => !filters.to || new Date(order.paid_at || order.created_at) <= new Date(filters.to))
         .map(withOrderDetails);
+    },
+
+    async updateOrganization(id, input, actor) {
+      const organization = organizations.find((item) => item.id === id);
+      if (!organization) throw new Error("Organization not found.");
+      organization.name = input.name;
+      organization.contact_email = input.contactEmail;
+      outlets.filter((outlet) => outlet.organization_id === id).forEach((outlet) => {
+        outlet.organization_name = input.name;
+      });
+      recordAuditEvent({ actor, entityType: "organization", entityId: id, action: "organization.updated", details: input });
+      return organization;
+    },
+
+    async updateOutlet(id, input, actor) {
+      const outlet = outlets.find((item) => item.id === id);
+      if (!outlet) throw new Error("Outlet not found.");
+      const organization = organizations.find((item) => item.id === input.organizationId);
+      Object.assign(outlet, {
+        organization_id: input.organizationId,
+        organization_name: organization?.name || outlet.organization_name,
+        name: input.name,
+        city: input.city,
+        address: input.address,
+        phone: input.phone,
+        is_open: input.isOpen
+      });
+      recordAuditEvent({ actor, entityType: "outlet", entityId: id, action: "outlet.updated", details: input });
+      return outlet;
+    },
+
+    async updateProduct(id, input, actor) {
+      const product = products.find((item) => item.id === id);
+      if (!product) throw new Error("Product not found.");
+      Object.assign(product, {
+        outlet_id: input.outletId,
+        name: input.name,
+        unit: input.unit,
+        price: Number(input.price),
+        available_quantity: Number(input.availableQuantity)
+      });
+      recordAuditEvent({ actor, entityType: "product", entityId: id, action: "product.updated", details: input });
+      return withOutletAndOrganization(product);
     },
 
     async createNotification(input) {

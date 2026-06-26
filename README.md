@@ -30,6 +30,10 @@ FuelUp is a trading and ordering platform that connects buyers with downstream o
 - Settlement CSV export
 - Admin account enable/disable controls
 - Migration runner foundation
+- Password reset tokens for operator/admin accounts
+- Cancellation approval/rejection with stock restoration
+- Low-stock thresholds and stock adjustment reasons
+- Resend email provider support
 - Production-oriented Render configuration
 
 ## Local Run
@@ -81,6 +85,7 @@ The app creates or updates its database tables and seed data automatically on st
 - `/login` - operator login
 - `/track` - buyer order tracking and payment
 - `/settlements.csv` - admin settlement export
+- `/settlements` - admin settlement dashboard with date filters
 - `/notifications` - admin notification outbox JSON
 - `/health` - Render health check
 - `/readiness` - database readiness check
@@ -101,6 +106,8 @@ Set these in Render before exposing operations users:
 - `PAYSTACK_CALLBACK_URL` - usually `https://fuelup-poc.onrender.com/payments/paystack/callback`
 - `NOTIFICATION_WEBHOOK_URL` - optional outbound notification webhook
 - `NOTIFICATION_FROM_EMAIL` - sender identity for webhook payloads
+- `RESEND_API_KEY` - optional direct email provider
+- `AUTO_MIGRATE=true` - keep startup schema sync enabled on Render
 
 If `ADMIN_EMAIL` and `ADMIN_PASSWORD` are not set, the public marketplace still runs, but the operations dashboard cannot be accessed.
 
@@ -125,9 +132,14 @@ Completed baseline:
 - Structured logs with request IDs
 - Paystack payment initialization, callback verification, and signed webhook handling
 - Notification outbox and optional webhook dispatch
+- Direct Resend email dispatch when configured
 - Outlet-scoped operators
 - Settlement CSV export
+- Settlement dashboard with date filters
 - Account enable/disable controls
+- Password reset token flow
+- Cancellation decision workflow with stock restoration
+- Low-stock thresholds and adjustment reasons
 - Database indexes for common operational paths
 - Graceful shutdown
 - Health and readiness checks
@@ -135,8 +147,8 @@ Completed baseline:
 
 Remaining production blockers:
 
-- Multi-user invitation and password reset flow
-- Settlement reconciliation reports
-- Direct email/SMS provider integration beyond webhook dispatch
+- Full invitation UX and branded email templates
+- Settlement reconciliation against provider fee/net settlement files
+- SMS/WhatsApp notifications
 - Backups, observability, and incident response procedures
 - Wider test coverage around PostgreSQL migrations and failure states

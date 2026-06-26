@@ -34,11 +34,13 @@ const {
 } = require("./payments/paystack");
 const {
   normalizeCancellationInput,
+  normalizeCancellationDecisionInput,
   normalizeInventoryInput,
   normalizeOrderInput,
   normalizeOrganizationInput,
   normalizeOutletInput,
   normalizePaymentStatus,
+  normalizePasswordResetInput,
   normalizeProductInput,
   normalizeStatus,
   normalizeUserInput
@@ -51,6 +53,8 @@ const {
   onboardingPage,
   orderFormPage,
   orderSuccessPage,
+  resetPasswordPage,
+  settlementsPage,
   trackOrderPage,
   usersPage
 } = require("./views");
@@ -67,7 +71,9 @@ async function createStore(config) {
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000
   });
-  await initDatabase(pool);
+  if (config.autoMigrate) {
+    await initDatabase(pool);
+  }
   return { ...createPostgresStore(pool), pool };
 }
 
@@ -203,6 +209,29 @@ async function createApp(config = createConfig()) {
   app.post("/logout", requireAuth, requireCsrf(config), (request, response) => {
     clearAuthCookies(response, config);
     response.redirect("/");
+  });
+
+  app.get("/reset-password", (request, response) => {
+    response.send(resetPasswordPage({
+      storeMode: store.mode,
+      token: request.query.token || "",
+      message: request.query.message || "",
+      error: request.query.error || ""
+    }));
+  });
+
+  app.post("/reset-password", async (request, response, next) => {
+    try {
+      const { input, errors } = normalizePasswordResetInput(request.body);
+      if (errors.length > 0) {
+        response.status(400).send(resetPasswordPage({ storeMode: store.mode, token: input.token, error: errors.join(" ") }));
+        return;
+      }
+      await store.resetPasswordByToken(input.token, await hashPassword(input.password));
+      response.redirect("/login?error=Password%20reset%20complete.%20Please%20sign%20in.");
+    } catch (error) {
+      response.status(400).send(resetPasswordPage({ storeMode: store.mode, token: request.body.token || "", error: error.message }));
+    }
   });
 
   app.get("/orders/new", async (request, response, next) => {
@@ -418,6 +447,21 @@ async function createApp(config = createConfig()) {
     }
   });
 
+  app.post("/admin/users/:id/reset", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+    try {
+      const user = await store.createPasswordReset(Number(request.params.id), request.user);
+      const resetUrl = `${request.protocol}://${request.get("host")}/reset-password?token=${encodeURIComponent(user.password_reset_token)}`;
+      await dispatchNotification(store, config, {
+        recipientEmail: user.email,
+        subject: "FuelUp password reset",
+        body: `Use this link to set your FuelUp password: ${resetUrl}`
+      });
+      response.redirect("/admin/users?message=Password%20reset%20created");
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/admin/users/:id/outlets", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
     try {
       const userId = Number(request.params.id);
@@ -431,7 +475,7 @@ async function createApp(config = createConfig()) {
 
   app.get("/settlements.csv", requireRole("admin"), async (_request, response, next) => {
     try {
-      const rows = await store.listSettlementRows();
+      const rows = await store.listSettlementRows({ from: _request.query.from, to: _request.query.to });
       const header = ["order_reference", "buyer_email", "organization", "outlet", "amount", "payment_provider", "payment_reference", "paid_at"];
       const escapeCsv = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
       const csv = [
@@ -450,6 +494,20 @@ async function createApp(config = createConfig()) {
       response.setHeader("content-type", "text/csv; charset=utf-8");
       response.setHeader("content-disposition", "attachment; filename=\"fuelup-settlements.csv\"");
       response.send(csv);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/settlements", requireRole("admin"), async (request, response, next) => {
+    try {
+      const filters = { from: request.query.from || "", to: request.query.to || "" };
+      const rows = await store.listSettlementRows(filters);
+      response.send(settlementsPage({
+        rows,
+        filters,
+        storeMode: store.mode
+      }));
     } catch (error) {
       next(error);
     }
@@ -489,6 +547,17 @@ async function createApp(config = createConfig()) {
     }
   });
 
+  app.post("/organizations/:id", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+    try {
+      const { input, errors } = normalizeOrganizationInput(request.body);
+      if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
+      await store.updateOrganization(Number(request.params.id), input, request.user);
+      response.redirect("/onboarding?message=Organization%20updated");
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/outlets", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
     try {
       const { input, errors } = normalizeOutletInput(request.body);
@@ -500,12 +569,34 @@ async function createApp(config = createConfig()) {
     }
   });
 
+  app.post("/outlets/:id", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+    try {
+      const { input, errors } = normalizeOutletInput(request.body);
+      if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
+      await store.updateOutlet(Number(request.params.id), input, request.user);
+      response.redirect("/onboarding?message=Outlet%20updated");
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/products", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
     try {
       const { input, errors } = normalizeProductInput(request.body);
       if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
       await store.createProduct(input, request.user);
       response.redirect("/onboarding?message=Product%20created");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/products/:id", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+    try {
+      const { input, errors } = normalizeProductInput(request.body);
+      if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
+      await store.updateProduct(Number(request.params.id), input, request.user);
+      response.redirect("/onboarding?message=Product%20updated");
     } catch (error) {
       next(error);
     }
@@ -541,6 +632,22 @@ async function createApp(config = createConfig()) {
       const order = await store.updateOrderStatus(Number(request.params.id), status, request.user);
       await dispatchNotification(store, config, orderStatusNotification(order));
       response.redirect("/dashboard?message=Order%20status%20updated");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/orders/:id/cancellation", requireAuth, requireCsrf(config), async (request, response, next) => {
+    try {
+      const { input, errors } = normalizeCancellationDecisionInput(request.body);
+      if (errors.length > 0) throw new Error(errors.join(" "));
+      const order = await store.decideCancellation(Number(request.params.id), input, request.user);
+      await dispatchNotification(store, config, {
+        recipientEmail: order.buyer_email,
+        subject: `FuelUp cancellation ${order.order_reference}`,
+        body: `Your cancellation request for ${order.order_reference} was ${input.decision}. Reason: ${input.reason}`
+      });
+      response.redirect("/dashboard?message=Cancellation%20decision%20saved");
     } catch (error) {
       next(error);
     }
