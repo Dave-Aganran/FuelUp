@@ -1013,6 +1013,290 @@ th {
   margin-top: 18px;
 }
 
+.app-layout {
+  display: grid;
+  grid-template-columns: 292px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 26px 20px;
+  background:
+    linear-gradient(180deg, rgba(6, 14, 13, 0.98), rgba(10, 33, 30, 0.98)),
+    radial-gradient(circle at 20% 0%, rgba(215, 167, 66, 0.22), transparent 19rem);
+  border-right: 1px solid rgba(215, 167, 66, 0.18);
+  color: #f9f6ec;
+}
+
+.page-frame {
+  min-width: 0;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(215, 167, 66, 0.12), transparent 26rem),
+    linear-gradient(180deg, #f7f4ec 0%, #ece6d9 100%);
+}
+
+.sidebar .brand {
+  color: #fff;
+}
+
+.sidebar .brand-mark {
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(135deg, #d7a742, #8a611f);
+  color: #09110f;
+  box-shadow: 0 12px 34px rgba(215, 167, 66, 0.24);
+}
+
+.sidebar .brand small {
+  color: rgba(249, 246, 236, 0.64);
+}
+
+.side-nav {
+  display: grid;
+  gap: 8px;
+  color: inherit;
+}
+
+.side-nav a {
+  display: grid;
+  gap: 3px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 12px 13px;
+  color: rgba(249, 246, 236, 0.78);
+  text-decoration: none;
+}
+
+.side-nav a:hover,
+.side-nav .nav-cta {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(215, 167, 66, 0.28);
+  color: #fff;
+}
+
+.side-nav a span {
+  font-weight: 850;
+}
+
+.side-nav a small,
+.sidebar-card small {
+  color: rgba(249, 246, 236, 0.55);
+  font-size: 0.78rem;
+}
+
+.side-nav .nav-cta {
+  margin-top: 10px;
+  background: linear-gradient(135deg, #d7a742, #9e7128);
+  color: #0a1110;
+}
+
+.side-nav .nav-cta small {
+  color: rgba(10, 17, 16, 0.72);
+}
+
+.sidebar-card {
+  display: grid;
+  gap: 7px;
+  margin-top: auto;
+  padding: 15px;
+  border: 1px solid rgba(215, 167, 66, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.app-shell {
+  padding: 28px 0 60px;
+}
+
+.hero {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 500px);
+  min-height: 560px;
+  border: 1px solid rgba(215, 167, 66, 0.25);
+  background:
+    linear-gradient(115deg, rgba(5, 13, 14, 0.96), rgba(8, 48, 43, 0.88)),
+    url("/assets/hero-terminal.png");
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 28px 90px rgba(8, 17, 15, 0.22);
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(5, 12, 12, 0.74), rgba(5, 12, 12, 0.26));
+}
+
+.hero h1 {
+  max-width: 780px;
+  font-size: clamp(3rem, 5.7vw, 5.9rem);
+}
+
+.hero .eyebrow,
+.eyebrow {
+  color: #a07121;
+}
+
+.hero .eyebrow {
+  color: #f1c76c;
+}
+
+.button,
+button {
+  background: linear-gradient(135deg, #0e6f58, #0a463c);
+  box-shadow: 0 10px 24px rgba(10, 70, 60, 0.14);
+}
+
+.button:hover,
+button:hover {
+  background: linear-gradient(135deg, #0a463c, #062d29);
+}
+
+.hero .button {
+  background: linear-gradient(135deg, #d7a742, #9e7128);
+  color: #09110f;
+}
+
+.hero .button.secondary,
+.button.secondary {
+  background: #efe4ca;
+  color: #4d3713;
+}
+
+.hero .button.ghost,
+.button.ghost {
+  background: transparent;
+  border: 1px solid rgba(215, 167, 66, 0.35);
+  color: inherit;
+}
+
+.hero-media {
+  position: relative;
+  overflow: hidden;
+  min-height: 230px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+.hero-media img {
+  width: 100%;
+  height: 100%;
+  min-height: 230px;
+  object-fit: cover;
+  display: block;
+}
+
+.hero-media figcaption {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(5, 13, 14, 0.72);
+  color: #fff;
+  font-weight: 850;
+  backdrop-filter: blur(12px);
+}
+
+.terminal-card {
+  background: rgba(7, 16, 15, 0.72);
+  border-color: rgba(215, 167, 66, 0.24);
+}
+
+.accent-card {
+  background: linear-gradient(135deg, #d7a742, #9e7128);
+}
+
+.trust-strip,
+.filter-bar,
+.listing-card,
+.form-card,
+.order-context,
+.summary-card,
+.metric-card,
+.table-wrap,
+.activity-panel {
+  background: rgba(255, 252, 244, 0.94);
+  border-color: rgba(96, 76, 38, 0.14);
+  box-shadow: 0 18px 52px rgba(41, 33, 18, 0.08);
+}
+
+.product-art {
+  position: relative;
+  min-height: 190px;
+  overflow: hidden;
+  background: #07100f;
+}
+
+.product-art img {
+  width: 100%;
+  height: 210px;
+  display: block;
+  object-fit: cover;
+  transition: transform 240ms ease;
+}
+
+.listing-card:hover .product-art img {
+  transform: scale(1.045);
+}
+
+.product-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 42%, rgba(5, 12, 12, 0.55));
+}
+
+.product-art span {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  z-index: 1;
+  width: 44px;
+  height: 44px;
+  border-color: rgba(215, 167, 66, 0.45);
+  background: rgba(5, 12, 12, 0.76);
+  color: #f1c76c;
+  font-size: 1.35rem;
+  backdrop-filter: blur(8px);
+}
+
+.listing-card:hover {
+  border-color: rgba(160, 113, 33, 0.34);
+  box-shadow: 0 26px 70px rgba(41, 33, 18, 0.14);
+}
+
+.listing-meta span {
+  background: #f0e5ce;
+  color: #594015;
+}
+
+.success,
+.status-completed,
+.status-ready {
+  background: #dff1e9;
+  color: #0a604d;
+}
+
+.status-pending {
+  background: #f6e8c6;
+  color: #7a5315;
+}
+
+.queue-board article {
+  background: rgba(255, 252, 244, 0.96);
+  border-color: rgba(96, 76, 38, 0.14);
+}
+
 .empty,
 .empty-panel {
   color: var(--muted);
@@ -1042,6 +1326,19 @@ footer {
 }
 
 @media (max-width: 900px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+  }
+
+  .side-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .hero,
   .form-grid {
     grid-template-columns: 1fr;
@@ -1068,7 +1365,6 @@ footer {
 }
 
 @media (max-width: 640px) {
-  .topbar,
   .section-heading,
   .dashboard-head,
   footer {
@@ -1076,8 +1372,18 @@ footer {
     flex-direction: column;
   }
 
-  nav {
-    flex-wrap: wrap;
+  .side-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell {
+    width: min(100% - 22px, 1280px);
+    padding-top: 18px;
+  }
+
+  .hero {
+    min-height: auto;
+    padding: 24px;
   }
 
   .hero h1,

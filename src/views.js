@@ -21,6 +21,14 @@ function productInitial(name) {
   return escapeHtml(String(name || "F").trim().slice(0, 1).toUpperCase());
 }
 
+function productImage(name) {
+  const normalized = String(name || "").toLowerCase();
+  if (normalized.includes("lpg") || normalized.includes("gas")) return "/assets/product-lpg.png";
+  if (normalized.includes("oil")) return "/assets/product-lubricants.png";
+  if (normalized.includes("ago") || normalized.includes("diesel")) return "/assets/product-diesel.png";
+  return "/assets/product-fuel.png";
+}
+
 function statusLabel(status) {
   const labels = {
     pending: "New request",
@@ -77,27 +85,38 @@ function layout({ title, body, storeMode }) {
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <header class="topbar">
+    <div class="app-layout">
+    <aside class="sidebar">
       <a class="brand" href="/" aria-label="FuelUp home">
         <span class="brand-mark">Fu</span>
         <span><strong>FuelUp</strong><small>Trading OS</small></span>
       </a>
-      <nav aria-label="Primary navigation">
-        <a href="/">Marketplace</a>
-        <a href="/dashboard">Operations</a>
-        <a href="/inventory">Inventory</a>
-        <a href="/admin/users">Users</a>
-        <a href="/track">Track order</a>
-        <a class="nav-cta" href="/login">Operator login</a>
+      <nav class="side-nav" aria-label="Primary navigation">
+        <a href="/"><span>Marketplace</span><small>Buyer ordering</small></a>
+        <a href="/track"><span>Track order</span><small>Buyer self-service</small></a>
+        <a href="/dashboard"><span>Operations</span><small>Fulfilment control</small></a>
+        <a href="/inventory"><span>Inventory</span><small>Stock and pricing</small></a>
+        <a href="/admin/users"><span>Users</span><small>Team access</small></a>
+        <a href="/onboarding"><span>Onboarding</span><small>Organizations and outlets</small></a>
+        <a href="/settlements"><span>Settlements</span><small>Paid order exports</small></a>
+        <a class="nav-cta" href="/login"><span>Operator login</span><small>Secure access</small></a>
       </nav>
-    </header>
-    <main class="app-shell">
-      ${body}
-    </main>
-    <footer>
-      <span>FuelUp trading platform</span>
-      <span>Runtime: ${escapeHtml(storeMode)}</span>
-    </footer>
+      <div class="sidebar-card">
+        <span class="signal"></span>
+        <strong>Production posture</strong>
+        <small>Render + PostgreSQL</small>
+      </div>
+    </aside>
+    <div class="page-frame">
+      <main class="app-shell">
+        ${body}
+      </main>
+      <footer>
+        <span>FuelUp trading platform</span>
+        <span>Runtime: ${escapeHtml(storeMode)}</span>
+      </footer>
+    </div>
+    </div>
   </body>
 </html>`;
 }
@@ -143,7 +162,8 @@ function marketplacePage(products, storeMode) {
       const availabilityClass = Number(product.available_quantity) > 5000 ? "good" : "watch";
       return `
         <article class="listing-card">
-          <div class="product-art" aria-hidden="true">
+          <div class="product-art">
+            <img src="${productImage(product.name)}" alt="${escapeHtml(product.name)} supply image" loading="lazy">
             <span>${productInitial(product.name)}</span>
           </div>
           <div class="listing-head">
@@ -195,6 +215,10 @@ function marketplacePage(products, storeMode) {
           </div>
         </div>
         <aside class="market-preview" aria-label="Marketplace snapshot">
+          <figure class="hero-media">
+            <img src="/assets/hero-terminal.png" alt="Premium oil and gas terminal at dusk">
+            <figcaption>Verified station supply network</figcaption>
+          </figure>
           <div class="terminal-card">
             <div class="panel-top"><span class="signal"></span><strong>Live marketplace</strong></div>
             <dl>
