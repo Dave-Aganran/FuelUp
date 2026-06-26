@@ -17,6 +17,55 @@ function formatQuantity(value) {
   return Number(value || 0).toLocaleString();
 }
 
+function productInitial(name) {
+  return escapeHtml(String(name || "F").trim().slice(0, 1).toUpperCase());
+}
+
+function statusLabel(status) {
+  const labels = {
+    pending: "New request",
+    accepted: "Accepted",
+    ready: "Ready",
+    completed: "Delivered",
+    cancelled: "Cancelled"
+  };
+  return labels[status] || status || "pending";
+}
+
+function paymentLabel(status) {
+  const labels = {
+    unpaid: "Payment due",
+    invoice_sent: "Invoice sent",
+    paid: "Paid",
+    refunded: "Refunded"
+  };
+  return labels[status] || status || "unpaid";
+}
+
+function orderTimeline(order) {
+  const steps = [
+    ["pending", "Order placed"],
+    ["accepted", "Outlet accepted"],
+    ["ready", "Ready / dispatching"],
+    ["completed", "Completed"]
+  ];
+  const orderStatus = order?.status || "pending";
+  const activeIndex = Math.max(0, steps.findIndex(([status]) => status === orderStatus));
+  const isCancelled = orderStatus === "cancelled";
+
+  return `
+    <ol class="timeline ${isCancelled ? "timeline-cancelled" : ""}">
+      ${steps.map(([status, label], index) => `
+        <li class="${index <= activeIndex && !isCancelled ? "done" : ""} ${status === orderStatus ? "current" : ""}">
+          <span></span>
+          <strong>${escapeHtml(label)}</strong>
+        </li>
+      `).join("")}
+      ${isCancelled ? `<li class="current danger-step"><span></span><strong>Cancellation approved</strong></li>` : ""}
+    </ol>
+  `;
+}
+
 function layout({ title, body, storeMode }) {
   return `<!doctype html>
 <html lang="en">
@@ -30,8 +79,8 @@ function layout({ title, body, storeMode }) {
   <body>
     <header class="topbar">
       <a class="brand" href="/" aria-label="FuelUp home">
-        <span class="brand-mark">F</span>
-        <span>FuelUp</span>
+        <span class="brand-mark">Fu</span>
+        <span><strong>FuelUp</strong><small>Trading OS</small></span>
       </a>
       <nav aria-label="Primary navigation">
         <a href="/">Marketplace</a>
@@ -39,10 +88,10 @@ function layout({ title, body, storeMode }) {
         <a href="/inventory">Inventory</a>
         <a href="/admin/users">Users</a>
         <a href="/track">Track order</a>
-        <a href="/login">Login</a>
+        <a class="nav-cta" href="/login">Operator login</a>
       </nav>
     </header>
-    <main>
+    <main class="app-shell">
       ${body}
     </main>
     <footer>
@@ -87,12 +136,16 @@ function marketplacePage(products, storeMode) {
   const openOutlets = new Set(products.filter((item) => item.is_open).map((item) => item.outlet_id)).size;
   const organizations = new Set(products.map((item) => item.organization_name)).size;
   const productCount = products.length;
+  const lowestPrice = products.length ? Math.min(...products.map((item) => Number(item.price || 0))) : 0;
 
   const cards = products
     .map((product) => {
       const availabilityClass = Number(product.available_quantity) > 5000 ? "good" : "watch";
       return `
         <article class="listing-card">
+          <div class="product-art" aria-hidden="true">
+            <span>${productInitial(product.name)}</span>
+          </div>
           <div class="listing-head">
             <div>
               <p class="eyebrow">${escapeHtml(product.organization_name)}</p>
@@ -102,6 +155,11 @@ function marketplacePage(products, storeMode) {
           </div>
           <p class="station">${escapeHtml(product.outlet_name)}</p>
           <p class="muted">${escapeHtml(product.address)}, ${escapeHtml(product.city)}</p>
+          <div class="listing-meta">
+            <span>Verified outlet</span>
+            <span>${escapeHtml(product.city)}</span>
+            <span>${Number(product.available_quantity) > 0 ? "Stock live" : "Out of stock"}</span>
+          </div>
           <dl class="market-facts">
             <div>
               <dt>Live price</dt>
@@ -128,23 +186,31 @@ function marketplacePage(products, storeMode) {
       <section class="hero">
         <div class="hero-copy">
           <p class="eyebrow">Verified downstream trading</p>
-          <h1>Fuel ordering infrastructure for buyers, outlets, and operators.</h1>
-          <p>FuelUp gives buyers a clear ordering path while station operators manage product availability, confirmations, and fulfillment from one control surface.</p>
+          <h1>Order fuel from verified outlets with live stock, pricing, and fulfilment tracking.</h1>
+          <p>FuelUp connects buyers to downstream oil and gas organizations while giving station operators a single control surface for orders, payments, inventory, and fulfilment.</p>
           <div class="hero-actions">
             <a class="button" href="#marketplace">Browse products</a>
-            <a class="button secondary" href="/dashboard">Open operations</a>
+            <a class="button secondary" href="/track">Track an order</a>
+            <a class="button ghost" href="/dashboard">Open operations</a>
           </div>
         </div>
-        <aside class="command-panel" aria-label="Marketplace snapshot">
-          <div class="panel-top">
-            <span class="signal"></span>
-            <strong>Live marketplace</strong>
+        <aside class="market-preview" aria-label="Marketplace snapshot">
+          <div class="terminal-card">
+            <div class="panel-top"><span class="signal"></span><strong>Live marketplace</strong></div>
+            <dl>
+              <div><dt>Organizations</dt><dd>${organizations}</dd></div>
+              <div><dt>Open outlets</dt><dd>${openOutlets}</dd></div>
+              <div><dt>Products listed</dt><dd>${productCount}</dd></div>
+            </dl>
           </div>
-          <dl>
-            <div><dt>Organizations</dt><dd>${organizations}</dd></div>
-            <div><dt>Open outlets</dt><dd>${openOutlets}</dd></div>
-            <div><dt>Products listed</dt><dd>${productCount}</dd></div>
-          </dl>
+          <div class="terminal-card accent-card">
+            <span>From</span>
+            <strong>${lowestPrice ? currency.format(lowestPrice) : "No price yet"}</strong>
+            <small>per listed unit</small>
+          </div>
+          <div class="route-card">
+            <span>Buyer</span><i></i><span>Outlet</span><i></i><span>Dispatch</span>
+          </div>
         </aside>
       </section>
 
@@ -161,6 +227,13 @@ function marketplacePage(products, storeMode) {
           <h2>Available products</h2>
         </div>
         <p>${productCount} listings across ${openOutlets} open outlets</p>
+      </section>
+
+      <section class="filter-bar" aria-label="Marketplace filters">
+        <label>Product <select><option>All fuel products</option><option>PMS</option><option>AGO</option><option>LPG</option></select></label>
+        <label>Location <input placeholder="City or area"></label>
+        <label>Fulfilment <select><option>Pickup or delivery</option><option>Pickup</option><option>Delivery request</option></select></label>
+        <button type="button">Search</button>
       </section>
 
       <section class="grid">
@@ -190,7 +263,12 @@ function orderFormPage(context, storeMode, error = "") {
           </aside>
 
           <section class="form-card">
-            <h2>Buyer details</h2>
+            <ol class="checkout-steps" aria-label="Checkout steps">
+              <li class="active"><span>1</span>Buyer</li>
+              <li><span>2</span>Fulfilment</li>
+              <li><span>3</span>Payment</li>
+            </ol>
+            <h2>Complete your reservation</h2>
             ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
             <form method="post" action="/orders">
               <input type="hidden" name="outletId" value="${context.outlet_id}">
@@ -239,6 +317,7 @@ function orderFormPage(context, storeMode, error = "") {
               </label>
 
               <button class="button wide" type="submit">Submit reservation</button>
+              <p class="form-footnote">Payment can be completed after the outlet receives the reservation.</p>
             </form>
           </section>
         </div>
@@ -255,10 +334,11 @@ function orderSuccessPage(order, storeMode) {
       <section class="success-panel">
         <p class="eyebrow">Reservation received</p>
         <h1>Order submitted for outlet confirmation.</h1>
+        ${orderTimeline(order)}
         <div class="summary-card">
           <strong>${escapeHtml(order.order_reference || `Order #${order.id}`)}</strong>
-          <span>Status: ${escapeHtml(order.status || "pending")}</span>
-          <span>Payment: ${escapeHtml(order.payment_status || "unpaid")}</span>
+          <span>Status: ${escapeHtml(statusLabel(order.status || "pending"))}</span>
+          <span>Payment: ${escapeHtml(paymentLabel(order.payment_status || "unpaid"))}</span>
         </div>
         <div class="hero-actions">
           <form class="logout-form" method="post" action="/payments/paystack/initialize">
@@ -295,10 +375,11 @@ function trackOrderPage({ storeMode, order = null, error = "", message = "" }) {
               <button class="button wide" type="submit">Find order</button>
             </form>
             ${order ? `
+              ${orderTimeline(order)}
               <div class="summary-card">
                 <strong>${escapeHtml(order.order_reference)}</strong>
-                <span>${escapeHtml(order.product_name)} · ${formatQuantity(order.quantity)} ${escapeHtml(order.unit)}</span>
-                <span>Status: ${escapeHtml(order.status)} · Payment: ${escapeHtml(order.payment_status || "unpaid")}</span>
+                <span>${escapeHtml(order.product_name)} - ${formatQuantity(order.quantity)} ${escapeHtml(order.unit)}</span>
+                <span>Status: ${escapeHtml(statusLabel(order.status))} - Payment: ${escapeHtml(paymentLabel(order.payment_status || "unpaid"))}</span>
                 <span>Outlet: ${escapeHtml(order.outlet_name)}</span>
                 ${order.cancellation_requested ? `<span>Cancellation requested: ${escapeHtml(order.cancellation_reason || "")}</span>` : ""}
               </div>
@@ -371,6 +452,12 @@ function auditFeed(events) {
 }
 
 function dashboardPage({ orders, summary, auditEvents, storeMode, message = "", user, csrfToken }) {
+  const statuses = ["pending", "accepted", "ready", "completed", "cancelled"];
+  const statusCounts = statuses.reduce((counts, status) => {
+    counts[status] = orders.filter((order) => order.status === status).length;
+    return counts;
+  }, {});
+  const cancellationCount = orders.filter((order) => order.cancellation_requested && !order.cancellation_decision).length;
   const metricCards = [
     ["Total orders", summary.totalOrders || 0],
     ["Pending", summary.pendingOrders || 0],
@@ -472,6 +559,21 @@ function dashboardPage({ orders, summary, auditEvents, storeMode, message = "", 
 
       <section class="metrics-grid">
         ${metricCards}
+      </section>
+
+      <section class="queue-board" aria-label="Order queue">
+        ${statuses.map((status) => `
+          <article>
+            <span class="status status-${status}">${escapeHtml(statusLabel(status))}</span>
+            <strong>${statusCounts[status] || 0}</strong>
+            <small>${status === "pending" ? "Needs acceptance" : status === "ready" ? "Awaiting handoff" : "Orders"}</small>
+          </article>
+        `).join("")}
+        <article class="${cancellationCount ? "queue-alert" : ""}">
+          <span class="status status-cancelled">Cancel review</span>
+          <strong>${cancellationCount}</strong>
+          <small>Buyer requests</small>
+        </article>
       </section>
 
       ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
@@ -656,6 +758,8 @@ function onboardingPage({ organizations, outlets, storeMode, message = "", error
 }
 
 function inventoryPage({ products, auditEvents, storeMode, message = "", error = "", user, csrfToken }) {
+  const lowStock = products.filter((product) => Number(product.available_quantity || 0) <= Number(product.low_stock_threshold || 0)).length;
+  const totalStock = products.reduce((sum, product) => sum + Number(product.available_quantity || 0), 0);
   const rows = products.length
     ? products.map((product) => `
         <tr>
@@ -712,6 +816,13 @@ function inventoryPage({ products, auditEvents, storeMode, message = "", error =
 
       ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
       ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
+
+      <section class="metrics-grid inventory-metrics">
+        <article class="metric-card"><span>Products managed</span><strong>${products.length}</strong></article>
+        <article class="metric-card"><span>Total available stock</span><strong>${formatQuantity(totalStock)}</strong></article>
+        <article class="metric-card ${lowStock ? "metric-warning" : ""}"><span>Low stock alerts</span><strong>${lowStock}</strong></article>
+        <article class="metric-card"><span>Control mode</span><strong>${escapeHtml(user.role)}</strong></article>
+      </section>
 
       <section class="ops-grid">
         <div class="table-wrap">
