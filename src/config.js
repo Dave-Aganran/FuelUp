@@ -15,6 +15,8 @@ function createConfig() {
   const nodeEnv = process.env.NODE_ENV || "development";
   const databaseUrl = process.env.DATABASE_URL || "";
   const authSecret = process.env.AUTH_SECRET || (nodeEnv === "production" ? databaseUrl : "dev-only-auth-secret");
+  const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY || "";
+  const paymentProvider = String(process.env.PAYMENT_PROVIDER || (paystackSecretKey ? "paystack" : "demo")).toLowerCase();
 
   return {
     nodeEnv,
@@ -29,7 +31,8 @@ function createConfig() {
     cookieSecure: readBoolean("COOKIE_SECURE", nodeEnv === "production"),
     adminEmail: process.env.ADMIN_EMAIL || "",
     adminPassword: process.env.ADMIN_PASSWORD || "",
-    paystackSecretKey: process.env.PAYSTACK_SECRET_KEY || "",
+    paymentProvider: ["demo", "paystack"].includes(paymentProvider) ? paymentProvider : "demo",
+    paystackSecretKey,
     paystackCallbackUrl: process.env.PAYSTACK_CALLBACK_URL || "",
     notificationWebhookUrl: process.env.NOTIFICATION_WEBHOOK_URL || "",
     notificationFromEmail: process.env.NOTIFICATION_FROM_EMAIL || "no-reply@fuelup.local",

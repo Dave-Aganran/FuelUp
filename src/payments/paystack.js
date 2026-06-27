@@ -24,6 +24,7 @@ async function initializePaystackPayment(order, config) {
 
   if (config.paystackSecretKey === "sk_test_mock") {
     return {
+      provider: "paystack",
       reference,
       amount,
       authorizationUrl: `${config.paystackCallbackUrl || "/payments/paystack/callback"}?reference=${reference}`,
@@ -57,6 +58,7 @@ async function initializePaystackPayment(order, config) {
   }
 
   return {
+    provider: "paystack",
     reference,
     amount,
     authorizationUrl: payload.data.authorization_url,

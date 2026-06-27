@@ -32,6 +32,7 @@ const {
   verifyPaystackReference,
   verifyPaystackWebhook
 } = require("./payments/paystack");
+const { initializeDemoPayment } = require("./payments/demo");
 const {
   normalizeCancellationInput,
   normalizeCancellationDecisionInput,
@@ -50,6 +51,7 @@ const {
 const {
   buyerSignupPage,
   dashboardPage,
+  demoPaymentPage,
   inventoryPage,
   loginPage,
   marketplacePage,
@@ -390,14 +392,15 @@ async function createApp(config = createConfig()) {
       const orderReference = String(request.query.orderReference || "").trim().toUpperCase();
       const buyerEmail = String(request.query.buyerEmail || "").trim().toLowerCase();
       if (!orderReference && !buyerEmail) {
-        response.send(trackOrderPage({ storeMode: store.mode, message: request.query.message || "" }));
+        response.send(trackOrderPage({ storeMode: store.mode, message: request.query.message || "", paymentProvider: config.paymentProvider }));
         return;
       }
       const order = await store.findOrderForBuyer(orderReference, buyerEmail);
       response.send(trackOrderPage({
         storeMode: store.mode,
         order,
-        error: order ? "" : "No order matched that reference and email."
+        error: order ? "" : "No order matched that reference and email.",
+        paymentProvider: config.paymentProvider
       }));
     } catch (error) {
       next(error);
@@ -408,7 +411,7 @@ async function createApp(config = createConfig()) {
     try {
       const { input, errors } = normalizeCancellationInput(request.body);
       if (errors.length > 0) {
-        response.status(400).send(trackOrderPage({ storeMode: store.mode, error: errors.join(" ") }));
+        response.status(400).send(trackOrderPage({ storeMode: store.mode, error: errors.join(" "), paymentProvider: config.paymentProvider }));
         return;
       }
       const order = await store.requestCancellation(input.orderReference, input.buyerEmail, input.reason);
@@ -420,14 +423,15 @@ async function createApp(config = createConfig()) {
       response.send(trackOrderPage({
         storeMode: store.mode,
         order,
-        message: "Cancellation request sent to operations."
+        message: "Cancellation request sent to operations.",
+        paymentProvider: config.paymentProvider
       }));
     } catch (error) {
-      response.status(404).send(trackOrderPage({ storeMode: store.mode, error: error.message }));
+      response.status(404).send(trackOrderPage({ storeMode: store.mode, error: error.message, paymentProvider: config.paymentProvider }));
     }
   });
 
-  app.post("/payments/paystack/initialize", async (request, response, next) => {
+  const startPayment = async (request, response, next) => {
     let order = null;
     let orderReference = "";
     let buyerEmail = "";
@@ -436,7 +440,7 @@ async function createApp(config = createConfig()) {
       buyerEmail = String(request.body.buyerEmail || "").trim().toLowerCase();
       order = await store.findOrderForBuyer(orderReference, buyerEmail);
       if (!order) {
-        response.status(404).send(trackOrderPage({ storeMode: store.mode, error: "Order not found." }));
+        response.status(404).send(trackOrderPage({ storeMode: store.mode, error: "Order not found.", paymentProvider: config.paymentProvider }));
         return;
       }
       if (order.payment_status === "paid") {
@@ -444,7 +448,9 @@ async function createApp(config = createConfig()) {
         return;
       }
 
-      const payment = await initializePaystackPayment(order, config);
+      const payment = config.paymentProvider === "demo"
+        ? initializeDemoPayment(order)
+        : await initializePaystackPayment(order, config);
       await store.prepareOrderPayment(orderReference, buyerEmail, payment);
       response.redirect(payment.authorizationUrl);
     } catch (error) {
@@ -453,11 +459,65 @@ async function createApp(config = createConfig()) {
         response.status(error.statusCode && error.statusCode < 500 ? error.statusCode : 502).send(trackOrderPage({
           storeMode: store.mode,
           order,
-          error: `Payment could not be started. ${error.message}`
+          error: `Payment could not be started. ${error.message}`,
+          paymentProvider: config.paymentProvider
         }));
       } catch (fallbackError) {
         next(fallbackError);
       }
+    }
+  };
+
+  app.post("/payments/initialize", startPayment);
+  app.post("/payments/paystack/initialize", startPayment);
+
+  app.get("/payments/demo/confirm", async (request, response, next) => {
+    try {
+      const reference = String(request.query.reference || "").trim();
+      if (!reference) {
+        response.status(400).send("Payment reference is required.");
+        return;
+      }
+
+      const order = await store.findOrderByPaymentReference(reference);
+      if (!order) {
+        response.status(404).send("Order not found for payment reference.");
+        return;
+      }
+
+      response.send(demoPaymentPage({ storeMode: store.mode, order, reference }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/payments/demo/confirm", async (request, response, next) => {
+    try {
+      const reference = String(request.body.reference || "").trim();
+      if (!reference) {
+        response.status(400).send("Payment reference is required.");
+        return;
+      }
+
+      const order = await store.findOrderByPaymentReference(reference);
+      if (!order) {
+        response.status(404).send("Order not found for payment reference.");
+        return;
+      }
+
+      await store.markPaymentPaid(reference, {
+        status: true,
+        data: {
+          status: "success",
+          reference,
+          provider: "demo",
+          amount: Math.round(Number(order.total_amount || 0) * 100),
+          currency: "NGN"
+        }
+      });
+      response.redirect(`/track?orderReference=${encodeURIComponent(order.order_reference)}&buyerEmail=${encodeURIComponent(order.buyer_email)}&message=${encodeURIComponent("Demo payment confirmed.")}`);
+    } catch (error) {
+      next(error);
     }
   });
 
@@ -498,7 +558,7 @@ async function createApp(config = createConfig()) {
 
       const order = await store.createOrder(input);
       await dispatchNotification(store, config, orderCreatedNotification(order));
-      response.status(201).send(orderSuccessPage(order, store.mode));
+      response.status(201).send(orderSuccessPage(order, store.mode, config.paymentProvider));
     } catch (error) {
       try {
         const context = await store.getOrderContext(input.outletId, input.productId);

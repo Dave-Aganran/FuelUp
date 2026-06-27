@@ -651,7 +651,7 @@ function createMemoryStore() {
       );
       if (!order) throw new Error("Order not found.");
       order.payment_status = "invoice_sent";
-      order.payment_provider = "paystack";
+      order.payment_provider = payment.provider || "paystack";
       order.payment_reference = payment.reference;
       order.payment_payload = payment.providerResponse;
       order.updated_at = new Date().toISOString();
@@ -678,7 +678,7 @@ function createMemoryStore() {
       order.payment_payload = payload;
       order.updated_at = new Date().toISOString();
       recordAuditEvent({
-        actor: { email: "paystack" },
+        actor: { email: order.payment_provider || "payment" },
         entityType: "order",
         entityId: order.id,
         action: "order.payment_paid",

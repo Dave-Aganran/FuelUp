@@ -112,6 +112,7 @@ Set these in Render before exposing operations users:
 - `ADMIN_PASSWORD` - first admin/operator password
 - `AUTH_SECRET` - generated automatically by the Render Blueprint for new deployments
 - `COOKIE_SECURE=true` - already configured in `render.yaml`
+- `PAYMENT_PROVIDER` - `demo` for simulated payments without Paystack credentials, or `paystack` for real Paystack test/live checkout
 - `PAYSTACK_SECRET_KEY` - Paystack secret key
 - `PAYSTACK_CALLBACK_URL` - usually `https://fuelup-poc.onrender.com/payments/paystack/callback`
 - `NOTIFICATION_WEBHOOK_URL` - optional outbound notification webhook
@@ -142,7 +143,7 @@ Completed baseline:
 - Integration test coverage for critical flows
 - GitHub Actions CI for pushes and pull requests
 - Structured logs with request IDs
-- Paystack payment initialization, callback verification, and signed webhook handling
+- Demo payment mode for no-credential testing, plus Paystack initialization, callback verification, and signed webhook handling
 - Notification outbox and optional webhook dispatch
 - Direct Resend email dispatch when configured
 - Outlet-scoped operators

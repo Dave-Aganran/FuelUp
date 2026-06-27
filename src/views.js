@@ -60,6 +60,16 @@ function paymentLabel(status) {
   return labels[status] || status || "unpaid";
 }
 
+function paymentButtonLabel(paymentProvider = "paystack") {
+  return paymentProvider === "demo" ? "Run demo payment" : "Pay with Paystack";
+}
+
+function paymentModeNotice(paymentProvider = "paystack") {
+  return paymentProvider === "demo"
+    ? `<p class="notice">Demo payments are enabled. No real money will be charged.</p>`
+    : "";
+}
+
 function orderTimeline(order) {
   const steps = [
     ["pending", "Order placed"],
@@ -594,7 +604,7 @@ function orderFormPage(context, storeMode, error = "") {
   });
 }
 
-function orderSuccessPage(order, storeMode) {
+function orderSuccessPage(order, storeMode, paymentProvider = "paystack") {
   return layout({
     title: "Order Submitted",
     storeMode,
@@ -608,11 +618,12 @@ function orderSuccessPage(order, storeMode) {
           <span>Status: ${escapeHtml(statusLabel(order.status || "pending"))}</span>
           <span>Payment: ${escapeHtml(paymentLabel(order.payment_status || "unpaid"))}</span>
         </div>
+        ${paymentModeNotice(paymentProvider)}
         <div class="hero-actions">
-          <form class="logout-form" method="post" action="/payments/paystack/initialize">
+          <form class="logout-form" method="post" action="/payments/initialize">
             <input type="hidden" name="orderReference" value="${escapeHtml(order.order_reference || "")}">
             <input type="hidden" name="buyerEmail" value="${escapeHtml(order.buyer_email || "")}">
-            <button class="button" type="submit">Pay with Paystack</button>
+            <button class="button" type="submit">${escapeHtml(paymentButtonLabel(paymentProvider))}</button>
           </form>
           <a class="button secondary" href="/track?orderReference=${encodeURIComponent(order.order_reference || "")}&buyerEmail=${encodeURIComponent(order.buyer_email || "")}">Track order</a>
           <a class="button secondary" href="/">Back to marketplace</a>
@@ -622,7 +633,7 @@ function orderSuccessPage(order, storeMode) {
   });
 }
 
-function trackOrderPage({ storeMode, order = null, error = "", message = "" }) {
+function trackOrderPage({ storeMode, order = null, error = "", message = "", paymentProvider = "paystack" }) {
   return layout({
     title: "Track Order",
     storeMode,
@@ -637,6 +648,7 @@ function trackOrderPage({ storeMode, order = null, error = "", message = "" }) {
           <section class="form-card">
             ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
             ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
+            ${paymentModeNotice(paymentProvider)}
             <form method="get" action="/track">
               <label>Order reference<input required name="orderReference" placeholder="FUP-000001" value="${escapeHtml(order?.order_reference || "")}"></label>
               <label>Buyer email<input required type="email" name="buyerEmail" placeholder="buyer@example.com" value="${escapeHtml(order?.buyer_email || "")}"></label>
@@ -652,10 +664,10 @@ function trackOrderPage({ storeMode, order = null, error = "", message = "" }) {
                 ${order.cancellation_requested ? `<span>Cancellation requested: ${escapeHtml(order.cancellation_reason || "")}</span>` : ""}
               </div>
               ${order.payment_status === "paid" ? `<p class="notice">Payment confirmed.</p>` : `
-                <form method="post" action="/payments/paystack/initialize">
+                <form method="post" action="/payments/initialize">
                   <input type="hidden" name="orderReference" value="${escapeHtml(order.order_reference)}">
                   <input type="hidden" name="buyerEmail" value="${escapeHtml(order.buyer_email)}">
-                  <button class="button wide" type="submit">Pay with Paystack</button>
+                  <button class="button wide" type="submit">${escapeHtml(paymentButtonLabel(paymentProvider))}</button>
                 </form>
               `}
               <form method="post" action="/orders/cancel-request">
@@ -666,6 +678,33 @@ function trackOrderPage({ storeMode, order = null, error = "", message = "" }) {
               </form>
             ` : ""}
           </section>
+        </div>
+      </section>
+    `
+  });
+}
+
+function demoPaymentPage({ storeMode, order, reference }) {
+  return layout({
+    title: "Demo Payment",
+    storeMode,
+    body: `
+      <section class="success-panel">
+        <p class="eyebrow">Demo payment</p>
+        <h1>Confirm simulated payment.</h1>
+        <p>This confirms the payment flow for testing only. No Paystack account is required and no real money will be charged.</p>
+        <div class="summary-card">
+          <strong>${escapeHtml(order.order_reference)}</strong>
+          <span>${escapeHtml(order.buyer_email)}</span>
+          <span>Amount: ${currency.format(Number(order.total_amount || 0))}</span>
+          <span>Reference: ${escapeHtml(reference)}</span>
+        </div>
+        <div class="hero-actions">
+          <form class="logout-form" method="post" action="/payments/demo/confirm">
+            <input type="hidden" name="reference" value="${escapeHtml(reference)}">
+            <button class="button" type="submit">Confirm demo payment</button>
+          </form>
+          <a class="button secondary" href="/track?orderReference=${encodeURIComponent(order.order_reference || "")}&buyerEmail=${encodeURIComponent(order.buyer_email || "")}">Back to tracking</a>
         </div>
       </section>
     `
@@ -1136,6 +1175,7 @@ function inventoryPage({ products, auditEvents, storeMode, message = "", error =
 module.exports = {
   buyerSignupPage,
   dashboardPage,
+  demoPaymentPage,
   inventoryPage,
   loginPage,
   marketplacePage,

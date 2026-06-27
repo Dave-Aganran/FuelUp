@@ -384,6 +384,7 @@ describe("FuelUp core flows", () => {
       cookieSecure: false,
       adminEmail: "ops2@example.com",
       adminPassword: "StrongPass123!",
+      paymentProvider: "paystack",
       paystackSecretKey: "",
       paystackCallbackUrl: "",
       appName: "FuelUp"
@@ -423,6 +424,82 @@ describe("FuelUp core flows", () => {
       assert.doesNotMatch(html, /FuelUp hit an unexpected error/);
     } finally {
       await new Promise((resolve) => paymentServer.close(resolve));
+    }
+  });
+
+  it("runs demo payments without Paystack credentials", async () => {
+    const { app } = await createApp({
+      nodeEnv: "test",
+      isProduction: false,
+      port: 0,
+      databaseUrl: "",
+      trustProxy: false,
+      maxRequestBody: "20kb",
+      rateLimitWindowMs: 60000,
+      rateLimitMax: 1000,
+      authSecret: "test-auth-secret-with-enough-length",
+      cookieSecure: false,
+      adminEmail: "ops3@example.com",
+      adminPassword: "StrongPass123!",
+      paymentProvider: "demo",
+      paystackSecretKey: "",
+      paystackCallbackUrl: "",
+      appName: "FuelUp"
+    });
+    let demoServer;
+    await new Promise((resolve) => {
+      demoServer = app.listen(0, resolve);
+    });
+    const demoBaseUrl = `http://127.0.0.1:${demoServer.address().port}`;
+
+    try {
+      const order = await fetch(`${demoBaseUrl}/orders`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: formBody({
+          outletId: "1",
+          productId: "1",
+          buyerName: "Demo Payment Buyer Ltd",
+          buyerPhone: "+2348000000001",
+          buyerEmail: "demopay@example.com",
+          quantity: "2",
+          fulfillmentMethod: "pickup",
+          deliveryAddress: "",
+          notes: "Demo payment test order"
+        })
+      });
+      const orderHtml = await order.text();
+      assert.match(orderHtml, /Run demo payment/);
+      assert.match(orderHtml, /No real money will be charged/);
+      const reference = orderHtml.match(/FUP-[0-9A-Z-]+/)[0];
+
+      const init = await fetch(`${demoBaseUrl}/payments/initialize`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: formBody({ orderReference: reference, buyerEmail: "demopay@example.com" })
+      });
+      assert.equal(init.status, 302);
+      const confirmUrl = new URL(init.headers.get("location"), demoBaseUrl);
+      assert.equal(confirmUrl.pathname, "/payments/demo/confirm");
+      const paymentReference = confirmUrl.searchParams.get("reference");
+      assert.ok(paymentReference.startsWith(`DEMO-${reference}`));
+
+      const confirm = await fetch(confirmUrl);
+      assert.match(await confirm.text(), /Confirm simulated payment/);
+
+      const paid = await fetch(`${demoBaseUrl}/payments/demo/confirm`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: formBody({ reference: paymentReference })
+      });
+      assert.equal(paid.status, 302);
+
+      const track = await fetch(`${demoBaseUrl}/track?orderReference=${reference}&buyerEmail=demopay@example.com`);
+      assert.match(await track.text(), /Payment confirmed/);
+    } finally {
+      await new Promise((resolve) => demoServer.close(resolve));
     }
   });
 

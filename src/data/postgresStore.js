@@ -950,14 +950,14 @@ function createPostgresStore(pool) {
         `
           UPDATE orders
           SET payment_status = 'invoice_sent',
-              payment_provider = 'paystack',
+              payment_provider = $5,
               payment_reference = $3,
               payment_payload = $4,
               updated_at = NOW()
           WHERE order_reference = $1 AND buyer_email = $2
           RETURNING id, order_reference, buyer_email, payment_reference
         `,
-        [reference, buyerEmail, payment.reference, JSON.stringify(payment.providerResponse || {})]
+        [reference, buyerEmail, payment.reference, JSON.stringify(payment.providerResponse || {}), payment.provider || "paystack"]
       );
       if (rows.length === 0) throw new Error("Order not found.");
       await this.recordAuditEvent({
@@ -991,13 +991,13 @@ function createPostgresStore(pool) {
               payment_payload = $2,
               updated_at = NOW()
           WHERE payment_reference = $1
-          RETURNING id, order_reference
+          RETURNING id, order_reference, payment_provider
         `,
         [paymentReference, JSON.stringify(payload || {})]
       );
       if (rows.length === 0) throw new Error("Order not found.");
       await this.recordAuditEvent({
-        actor: { email: "paystack" },
+        actor: { email: rows[0].payment_provider || "payment" },
         entityType: "order",
         entityId: rows[0].id,
         action: "order.payment_paid",
