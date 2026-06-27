@@ -16,7 +16,7 @@ function createConfig() {
   const databaseUrl = process.env.DATABASE_URL || "";
   const authSecret = process.env.AUTH_SECRET || (nodeEnv === "production" ? databaseUrl : "dev-only-auth-secret");
   const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY || "";
-  const paymentProvider = String(process.env.PAYMENT_PROVIDER || (paystackSecretKey ? "paystack" : "demo")).toLowerCase();
+  const paymentProvider = String(process.env.PAYMENT_PROVIDER || "demo").toLowerCase();
 
   return {
     nodeEnv,

@@ -1818,3 +1818,320 @@ footer {
     grid-template-columns: 1fr;
   }
 }
+
+/* Calmer product UI pass: smaller type, steadier spacing, safer wrapping. */
+:root {
+  --bg: #f6f8f7;
+  --surface: #ffffff;
+  --surface-strong: #f9fbfa;
+  --ink: #17201d;
+  --muted: #64716c;
+  --line: #dce4e0;
+  --brand: #12624f;
+  --brand-dark: #0b3d35;
+  --accent: #dbeafe;
+  --gold: #9b6f25;
+  --gold-soft: #f4ead5;
+  --shadow: 0 10px 30px rgba(18, 35, 30, 0.07);
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  background: var(--bg);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.page-frame {
+  background: linear-gradient(180deg, #fbfcfb 0%, var(--bg) 100%);
+}
+
+main,
+.app-shell,
+footer {
+  width: min(1160px, calc(100% - 40px));
+}
+
+.topbar {
+  padding: 12px clamp(16px, 3vw, 44px);
+}
+
+.brand {
+  font-size: 1.05rem;
+  font-weight: 760;
+}
+
+nav {
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+nav a {
+  padding: 7px 10px;
+}
+
+.hero {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.74fr);
+  min-height: 410px;
+  padding: 34px;
+  gap: 22px;
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+}
+
+.hero h1,
+.dashboard-head h1,
+.success-panel h1 {
+  max-width: 720px;
+  font-size: 2.65rem;
+  line-height: 1.08;
+  font-weight: 780;
+}
+
+.hero p,
+.dashboard-head p,
+.success-panel p,
+.order-context p,
+.form-card p {
+  max-width: 680px;
+  font-size: 1rem;
+  line-height: 1.58;
+}
+
+.section-heading h2,
+.order-context h1,
+.auth-card h1 {
+  font-size: 1.65rem;
+  line-height: 1.15;
+  font-weight: 760;
+}
+
+.listing-card h2,
+.form-card h2,
+.activity-panel h2 {
+  font-size: 1.18rem;
+  line-height: 1.2;
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  font-weight: 760;
+}
+
+.button,
+button {
+  min-height: 40px;
+  max-width: 100%;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 0.93rem;
+  font-weight: 720;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+}
+
+.hero-actions,
+.listing-actions,
+.form-actions {
+  gap: 10px;
+}
+
+.command-panel,
+.listing-card,
+.form-card,
+.order-context,
+.summary-card,
+.metric-card,
+.table-wrap,
+.activity-panel,
+.trust-strip,
+.auth-card {
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+}
+
+.order-context,
+.form-card {
+  padding: 20px;
+}
+
+.summary-card {
+  padding: 16px;
+  gap: 6px;
+}
+
+.summary-card strong {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.notice,
+.alert {
+  padding: 12px 14px;
+  font-size: 0.93rem;
+  line-height: 1.45;
+}
+
+.trust-strip div,
+.listing-card,
+.metric-card {
+  padding: 16px;
+}
+
+.command-panel dd,
+dd,
+.metric-card strong {
+  font-size: 1.45rem;
+  line-height: 1.15;
+  font-weight: 760;
+}
+
+.metric-card span,
+.pill,
+.status,
+dt,
+td,
+th,
+label {
+  font-size: 0.88rem;
+}
+
+input,
+select,
+textarea {
+  min-height: 40px;
+  font-size: 0.95rem;
+}
+
+.hero-media,
+.hero-media img {
+  min-height: 260px;
+}
+
+.product-art {
+  min-height: 190px;
+}
+
+.product-art img {
+  height: 210px;
+}
+
+.journey-rail li {
+  grid-template-columns: 34px 1fr;
+}
+
+.journey-rail li > span {
+  min-width: 34px;
+  height: 34px;
+  font-size: 0.86rem;
+}
+
+.timeline li strong {
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+@media (max-width: 900px) {
+  main,
+  .app-shell,
+  footer {
+    width: min(100% - 28px, 1160px);
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    padding: 24px;
+  }
+
+  .hero-copy,
+  .market-preview,
+  .hero-media,
+  .terminal-card,
+  .route-card {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .hero h1,
+  .dashboard-head h1,
+  .success-panel h1 {
+    font-size: 2.1rem;
+  }
+}
+
+@media (max-width: 640px) {
+  html {
+    font-size: 14px;
+  }
+
+  .sidebar {
+    padding: 18px 14px;
+  }
+
+  .sidebar .brand {
+    padding-bottom: 8px;
+  }
+
+  .side-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .side-nav a,
+  .side-nav .nav-cta {
+    padding: 9px;
+  }
+
+  .side-nav span {
+    font-size: 0.82rem;
+  }
+
+  .side-nav small {
+    font-size: 0.72rem;
+  }
+
+  .sidebar-card {
+    padding: 12px;
+  }
+
+  .topbar,
+  .hero-actions,
+  .listing-actions {
+    align-items: stretch;
+  }
+
+  .topbar,
+  nav,
+  .hero-actions,
+  .listing-actions {
+    flex-wrap: wrap;
+  }
+
+  .button,
+  button {
+    min-height: 42px;
+  }
+
+  .hero h1,
+  .dashboard-head h1,
+  .success-panel h1 {
+    font-size: 1.9rem;
+  }
+
+  .hero-media,
+  .hero-media img {
+    min-height: 210px;
+  }
+
+  .order-context,
+  .form-card,
+  .auth-card {
+    padding: 16px;
+  }
+}

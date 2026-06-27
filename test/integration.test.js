@@ -36,6 +36,7 @@ before(async () => {
     cookieSecure: false,
     adminEmail: "ops@example.com",
     adminPassword: "StrongPass123!",
+    paymentProvider: "paystack",
     paystackSecretKey: "sk_test_mock",
     paystackCallbackUrl: "",
     appName: "FuelUp"
