@@ -370,6 +370,62 @@ describe("FuelUp core flows", () => {
     assert.match(await track.text(), /Payment confirmed/);
   });
 
+  it("shows a buyer-facing payment setup error instead of the generic crash page", async () => {
+    const { app } = await createApp({
+      nodeEnv: "test",
+      isProduction: false,
+      port: 0,
+      databaseUrl: "",
+      trustProxy: false,
+      maxRequestBody: "20kb",
+      rateLimitWindowMs: 60000,
+      rateLimitMax: 1000,
+      authSecret: "test-auth-secret-with-enough-length",
+      cookieSecure: false,
+      adminEmail: "ops2@example.com",
+      adminPassword: "StrongPass123!",
+      paystackSecretKey: "",
+      paystackCallbackUrl: "",
+      appName: "FuelUp"
+    });
+    let paymentServer;
+    await new Promise((resolve) => {
+      paymentServer = app.listen(0, resolve);
+    });
+    const paymentBaseUrl = `http://127.0.0.1:${paymentServer.address().port}`;
+
+    try {
+      const order = await fetch(`${paymentBaseUrl}/orders`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: formBody({
+          outletId: "1",
+          productId: "1",
+          buyerName: "Payment Config Buyer Ltd",
+          buyerPhone: "+2348000000000",
+          buyerEmail: "payconfig@example.com",
+          quantity: "2",
+          fulfillmentMethod: "pickup",
+          deliveryAddress: "",
+          notes: "Payment config test order"
+        })
+      });
+      const reference = (await order.text()).match(/FUP-[0-9A-Z-]+/)[0];
+      const init = await fetch(`${paymentBaseUrl}/payments/paystack/initialize`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: formBody({ orderReference: reference, buyerEmail: "payconfig@example.com" })
+      });
+      assert.equal(init.status, 502);
+      const html = await init.text();
+      assert.match(html, /Payment could not be started/);
+      assert.match(html, /Paystack is not configured/);
+      assert.doesNotMatch(html, /FuelUp hit an unexpected error/);
+    } finally {
+      await new Promise((resolve) => paymentServer.close(resolve));
+    }
+  });
+
   it("accepts signed Paystack charge.success webhooks", async () => {
     const order = await fetch(`${baseUrl}/orders`, {
       method: "POST",

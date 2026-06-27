@@ -428,10 +428,13 @@ async function createApp(config = createConfig()) {
   });
 
   app.post("/payments/paystack/initialize", async (request, response, next) => {
+    let order = null;
+    let orderReference = "";
+    let buyerEmail = "";
     try {
-      const orderReference = String(request.body.orderReference || "").trim().toUpperCase();
-      const buyerEmail = String(request.body.buyerEmail || "").trim().toLowerCase();
-      const order = await store.findOrderForBuyer(orderReference, buyerEmail);
+      orderReference = String(request.body.orderReference || "").trim().toUpperCase();
+      buyerEmail = String(request.body.buyerEmail || "").trim().toLowerCase();
+      order = await store.findOrderForBuyer(orderReference, buyerEmail);
       if (!order) {
         response.status(404).send(trackOrderPage({ storeMode: store.mode, error: "Order not found." }));
         return;
@@ -445,7 +448,16 @@ async function createApp(config = createConfig()) {
       await store.prepareOrderPayment(orderReference, buyerEmail, payment);
       response.redirect(payment.authorizationUrl);
     } catch (error) {
-      next(error);
+      try {
+        order = order || await store.findOrderForBuyer(orderReference, buyerEmail);
+        response.status(error.statusCode && error.statusCode < 500 ? error.statusCode : 502).send(trackOrderPage({
+          storeMode: store.mode,
+          order,
+          error: `Payment could not be started. ${error.message}`
+        }));
+      } catch (fallbackError) {
+        next(fallbackError);
+      }
     }
   });
 
