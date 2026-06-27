@@ -1033,6 +1033,12 @@ th {
   font-size: 0.9rem;
 }
 
+.optional-text {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .timeline {
   grid-template-columns: repeat(4, 1fr);
   margin-top: 22px;

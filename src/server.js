@@ -35,6 +35,7 @@ const {
 const {
   normalizeCancellationInput,
   normalizeCancellationDecisionInput,
+  normalizeBuyerSignupInput,
   normalizeInventoryInput,
   normalizeOrderInput,
   normalizeOrganizationInput,
@@ -47,6 +48,7 @@ const {
   normalizeUserInput
 } = require("./validation");
 const {
+  buyerSignupPage,
   dashboardPage,
   inventoryPage,
   loginPage,
@@ -91,6 +93,10 @@ function adjacentSelfOnboardingStep(step, direction) {
     return selfOnboardingSteps[Math.max(0, index - 1)];
   }
   return selfOnboardingSteps[Math.min(selfOnboardingSteps.length - 1, index + 1)];
+}
+
+function absoluteUrl(request, path) {
+  return `${request.protocol}://${request.get("host")}${path}`;
 }
 
 async function createApp(config = createConfig()) {
@@ -244,13 +250,13 @@ async function createApp(config = createConfig()) {
       }
 
       const tenant = await store.createTenantOnboarding(input, await hashPassword(input.password));
+      const activationUrl = absoluteUrl(request, `/activate-account?token=${encodeURIComponent(tenant.user.activation_token)}`);
       await dispatchNotification(store, config, {
         recipientEmail: input.operatorEmail,
-        subject: "FuelUp tenant account created",
-        body: `Your FuelUp account for ${input.organizationName} is ready. Sign in with ${input.operatorEmail}.`
+        subject: "Activate your FuelUp tenant account",
+        body: `Your FuelUp account for ${input.organizationName} is almost ready. Activate it here: ${activationUrl}`
       });
-      setAuthCookies(response, tenant.user, config);
-      response.redirect("/dashboard?message=Tenant%20created");
+      response.redirect("/login?error=Check%20your%20email%20for%20the%20activation%20link.");
     } catch (error) {
       response.status(error.statusCode || 400).send(selfOnboardingPage({
         storeMode: store.mode,
@@ -258,6 +264,54 @@ async function createApp(config = createConfig()) {
         values: request.body,
         step: selfOnboardingStep(request.body.step)
       }));
+    }
+  });
+
+  app.get("/activate-account", async (request, response, next) => {
+    try {
+      const token = String(request.query.token || "").trim();
+      const user = await store.activateUserByToken(token);
+      setAuthCookies(response, user, config);
+      response.redirect("/dashboard?message=Account%20activated");
+    } catch (error) {
+      response.redirect(`/login?error=${encodeURIComponent(error.message)}`);
+    }
+  });
+
+  app.get("/buyers/signup", (request, response) => {
+    response.send(buyerSignupPage({
+      storeMode: store.mode,
+      message: request.query.message || "",
+      error: request.query.error || ""
+    }));
+  });
+
+  app.post("/buyers/signup", async (request, response) => {
+    try {
+      const { input, errors } = normalizeBuyerSignupInput(request.body);
+      if (errors.length > 0) {
+        response.status(400).send(buyerSignupPage({ storeMode: store.mode, error: errors.join(" "), values: input }));
+        return;
+      }
+      const buyer = await store.createBuyerSignup(input);
+      const activationUrl = absoluteUrl(request, `/buyers/activate?token=${encodeURIComponent(buyer.activation_token)}`);
+      await dispatchNotification(store, config, {
+        recipientEmail: input.email,
+        subject: "Activate your FuelUp buyer account",
+        body: `Activate your FuelUp buyer account here: ${activationUrl}`
+      });
+      response.redirect("/buyers/signup?message=Check%20your%20email%20for%20the%20activation%20link.");
+    } catch (error) {
+      response.status(400).send(buyerSignupPage({ storeMode: store.mode, error: error.message, values: request.body }));
+    }
+  });
+
+  app.get("/buyers/activate", async (request, response) => {
+    try {
+      await store.activateBuyerByToken(String(request.query.token || "").trim());
+      response.redirect("/track?message=Buyer%20account%20activated.");
+    } catch (error) {
+      response.redirect(`/buyers/signup?error=${encodeURIComponent(error.message)}`);
     }
   });
 
@@ -336,7 +390,7 @@ async function createApp(config = createConfig()) {
       const orderReference = String(request.query.orderReference || "").trim().toUpperCase();
       const buyerEmail = String(request.query.buyerEmail || "").trim().toLowerCase();
       if (!orderReference && !buyerEmail) {
-        response.send(trackOrderPage({ storeMode: store.mode }));
+        response.send(trackOrderPage({ storeMode: store.mode, message: request.query.message || "" }));
         return;
       }
       const order = await store.findOrderForBuyer(orderReference, buyerEmail);

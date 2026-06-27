@@ -66,6 +66,7 @@ describe("FuelUp core flows", () => {
     const homeHtml = await home.text();
     assert.match(homeHtml, /Verified downstream trading/);
     assert.match(homeHtml, /Join FuelUp/);
+    assert.match(homeHtml, /Buyer signup/);
     assert.doesNotMatch(homeHtml, />Operations</);
     assert.doesNotMatch(homeHtml, />Users</);
   });
@@ -131,12 +132,52 @@ describe("FuelUp core flows", () => {
       body: formBody({
         price: "745",
         availableQuantity: "17500",
+        adjustmentMode: "set",
+        adjustmentQuantity: "0",
         lowStockThreshold: "1000",
         adjustmentReason: "CI inventory verification",
         csrfToken: csrf
       })
     });
     assert.equal(inventoryPost.status, 302);
+
+    const inventoryAdd = await fetch(`${baseUrl}/products/1/inventory`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        cookie: cookies,
+        "content-type": "application/x-www-form-urlencoded"
+      },
+      body: formBody({
+        price: "745",
+        availableQuantity: "17500",
+        adjustmentMode: "add",
+        adjustmentQuantity: "250",
+        lowStockThreshold: "1000",
+        adjustmentReason: "CI stock receipt",
+        csrfToken: csrf
+      })
+    });
+    assert.equal(inventoryAdd.status, 302);
+
+    const inventoryRemove = await fetch(`${baseUrl}/products/1/inventory`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        cookie: cookies,
+        "content-type": "application/x-www-form-urlencoded"
+      },
+      body: formBody({
+        price: "745",
+        availableQuantity: "17500",
+        adjustmentMode: "remove",
+        adjustmentQuantity: "50",
+        lowStockThreshold: "1000",
+        adjustmentReason: "CI stock correction",
+        csrfToken: csrf
+      })
+    });
+    assert.equal(inventoryRemove.status, 302);
 
     const dashboard = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: cookies } });
     assert.equal(dashboard.status, 200);
@@ -477,6 +518,8 @@ describe("FuelUp core flows", () => {
     const reviewHtml = await operator.text();
     assert.match(reviewHtml, /Review and create your tenant/);
     assert.match(reviewHtml, /Self Serve Energy/);
+    assert.match(reviewHtml, /Completed/);
+    assert.match(reviewHtml, /Active now/);
 
     const onboard = await fetch(`${baseUrl}/self-onboarding`, {
       method: "POST",
@@ -493,8 +536,36 @@ describe("FuelUp core flows", () => {
     });
 
     assert.equal(onboard.status, 302);
-    assert.equal(onboard.headers.get("location"), "/dashboard?message=Tenant%20created");
-    const cookies = parseCookies(onboard.headers);
+    assert.equal(onboard.headers.get("location"), "/login?error=Check%20your%20email%20for%20the%20activation%20link.");
+
+    const inactiveLogin = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ email: tenantValues.operatorEmail, password: "TenantPass123!", next: "/dashboard" })
+    });
+    assert.equal(inactiveLogin.status, 302);
+    assert.match(inactiveLogin.headers.get("location"), /Invalid%20email%20or%20password/);
+
+    const adminLogin = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ email: "ops@example.com", password: "StrongPass123!", next: "/notifications" })
+    });
+    const adminCookies = parseCookies(adminLogin.headers);
+    const notifications = await fetch(`${baseUrl}/notifications`, { headers: { cookie: adminCookies } });
+    const notificationRows = await notifications.json();
+    const activationNotification = notificationRows.find((item) => item.subject === "Activate your FuelUp tenant account");
+    assert.ok(activationNotification);
+    const activationToken = activationNotification.body.match(/token=([^ ]+)/)[1];
+
+    const activation = await fetch(`${baseUrl}/activate-account?token=${encodeURIComponent(activationToken)}`, {
+      redirect: "manual"
+    });
+    assert.equal(activation.status, 302);
+    assert.equal(activation.headers.get("location"), "/dashboard?message=Account%20activated");
+    const cookies = parseCookies(activation.headers);
 
     const dashboard = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: cookies } });
     assert.equal(dashboard.status, 200);
@@ -509,5 +580,44 @@ describe("FuelUp core flows", () => {
       redirect: "manual"
     });
     assert.equal(adminUsers.status, 403);
+  });
+
+  it("supports buyer signup with activation baseline", async () => {
+    const signup = await fetch(`${baseUrl}/buyers/signup`);
+    assert.equal(signup.status, 200);
+    assert.match(await signup.text(), /Create a buyer profile/);
+
+    const createBuyer = await fetch(`${baseUrl}/buyers/signup`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        name: "Reward Buyer",
+        email: "reward@example.com",
+        phone: "+2348011112222",
+        companyName: "Reward Logistics"
+      })
+    });
+    assert.equal(createBuyer.status, 302);
+    assert.equal(createBuyer.headers.get("location"), "/buyers/signup?message=Check%20your%20email%20for%20the%20activation%20link.");
+
+    const adminLogin = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ email: "ops@example.com", password: "StrongPass123!", next: "/notifications" })
+    });
+    const adminCookies = parseCookies(adminLogin.headers);
+    const notifications = await fetch(`${baseUrl}/notifications`, { headers: { cookie: adminCookies } });
+    const notificationRows = await notifications.json();
+    const buyerActivation = notificationRows.find((item) => item.subject === "Activate your FuelUp buyer account");
+    assert.ok(buyerActivation);
+    const buyerToken = buyerActivation.body.match(/token=([^ ]+)/)[1];
+
+    const activateBuyer = await fetch(`${baseUrl}/buyers/activate?token=${encodeURIComponent(buyerToken)}`, {
+      redirect: "manual"
+    });
+    assert.equal(activateBuyer.status, 302);
+    assert.equal(activateBuyer.headers.get("location"), "/track?message=Buyer%20account%20activated.");
   });
 });

@@ -88,6 +88,7 @@ function navItemsFor(user) {
   const publicItems = [
     { href: "/", label: "Marketplace", detail: "Buyer ordering" },
     { href: "/track", label: "Track order", detail: "Buyer self-service" },
+    { href: "/buyers/signup", label: "Buyer signup", detail: "Loyalty baseline" },
     { href: "/self-onboarding", label: "Join FuelUp", detail: "Self-service onboarding" }
   ];
 
@@ -113,7 +114,8 @@ function navItemsFor(user) {
   return [
     ...operatorItems,
     ...adminItems,
-    ...publicItems,
+    { href: "/", label: "Marketplace", detail: "Buyer ordering" },
+    { href: "/track", label: "Track order", detail: "Buyer self-service" },
     { href: "/dashboard", label: user.email, detail: `${user.role} session`, cta: true }
   ];
 }
@@ -192,6 +194,35 @@ function loginPage({ storeMode, nextPath, error = "", adminConfigured = true }) 
   });
 }
 
+function buyerSignupPage({ storeMode, error = "", message = "", values = {} }) {
+  return layout({
+    title: "Buyer Signup",
+    storeMode,
+    body: `
+      <section class="form-shell">
+        <div class="form-grid">
+          <aside class="order-context">
+            <p class="eyebrow">Buyer account</p>
+            <h1>Create a buyer profile for purchase history, referrals, rewards, and wallets.</h1>
+            <p>This creates a verified buyer baseline now, so future customer engagement features have a clean account record to build on.</p>
+          </aside>
+          <section class="form-card">
+            ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
+            ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
+            <form method="post" action="/buyers/signup">
+              <label>Full name<input required name="name" maxlength="120" autocomplete="name" value="${escapeHtml(values.name || "")}"></label>
+              <label>Email<input required type="email" name="email" maxlength="160" autocomplete="email" value="${escapeHtml(values.email || "")}"></label>
+              <label>Phone<input required name="phone" maxlength="40" autocomplete="tel" value="${escapeHtml(values.phone || "")}"></label>
+              <label>Company name <span class="optional-text">optional</span><input name="companyName" maxlength="160" autocomplete="organization" value="${escapeHtml(values.companyName || "")}"></label>
+              <button class="button wide" type="submit">Send activation link</button>
+            </form>
+          </section>
+        </div>
+      </section>
+    `
+  });
+}
+
 const onboardingSteps = [
   { id: "organization", label: "Organization", detail: "Legal identity and contact" },
   { id: "outlet", label: "Outlet", detail: "First station or depot" },
@@ -229,7 +260,7 @@ function selfOnboardingProgress(step) {
           <span>${index < activeIndex ? "OK" : index + 1}</span>
           <div>
             <strong>${escapeHtml(item.label)}</strong>
-            <small>${escapeHtml(item.detail)}</small>
+            <small>${escapeHtml(index < activeIndex ? "Completed" : index === activeIndex ? "Active now" : "Remaining")} - ${escapeHtml(item.detail)}</small>
           </div>
         </li>
       `).join("")}
@@ -261,7 +292,7 @@ function selfOnboardingStage({ step, values }) {
   const hidden = (exclude = []) => selfOnboardingHiddenFields(values, exclude);
   const backButton = step === "organization"
     ? `<a class="button secondary" href="/">Back to marketplace</a>`
-    : `<button class="button secondary" type="submit" name="direction" value="back">Back</button>`;
+    : `<button class="button secondary" type="submit" name="direction" value="back" formnovalidate>Back</button>`;
 
   if (step === "outlet") {
     return `
@@ -1022,6 +1053,18 @@ function inventoryPage({ products, auditEvents, storeMode, message = "", error =
                 <input required type="number" name="availableQuantity" min="0" step="0.01" value="${escapeHtml(product.available_quantity)}">
               </label>
               <label>
+                Stock action
+                <select name="adjustmentMode">
+                  <option value="set">Set stock to</option>
+                  <option value="add">Add stock</option>
+                  <option value="remove">Remove stock</option>
+                </select>
+              </label>
+              <label>
+                Add/remove qty
+                <input type="number" name="adjustmentQuantity" min="0" step="0.01" value="0">
+              </label>
+              <label>
                 Low alert
                 <input required type="number" name="lowStockThreshold" min="0" step="0.01" value="${escapeHtml(product.low_stock_threshold || 0)}">
               </label>
@@ -1091,6 +1134,7 @@ function inventoryPage({ products, auditEvents, storeMode, message = "", error =
 }
 
 module.exports = {
+  buyerSignupPage,
   dashboardPage,
   inventoryPage,
   loginPage,

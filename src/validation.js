@@ -2,6 +2,7 @@ const allowedFulfillmentMethods = new Set(["pickup", "delivery"]);
 const allowedStatuses = new Set(["pending", "accepted", "ready", "completed", "cancelled"]);
 const allowedPaymentStatuses = new Set(["unpaid", "invoice_sent", "paid", "refunded"]);
 const allowedRoles = new Set(["admin", "operator"]);
+const allowedStockAdjustments = new Set(["set", "add", "remove"]);
 
 function cleanText(value, maxLength) {
   return String(value || "").trim().replace(/\s+/g, " ").slice(0, maxLength);
@@ -80,9 +81,11 @@ function normalizePaymentStatus(value) {
 function normalizeInventoryInput(body) {
   const price = Number(body.price);
   const availableQuantity = Number(body.availableQuantity);
+  const adjustmentMode = cleanText(body.adjustmentMode || "set", 20);
+  const adjustmentQuantity = Number(body.adjustmentQuantity || 0);
   const lowStockThreshold = Number(body.lowStockThreshold || 0);
   const adjustmentReason = cleanLongText(body.adjustmentReason, 300);
-  const input = { price, availableQuantity, lowStockThreshold, adjustmentReason };
+  const input = { price, availableQuantity, adjustmentMode, adjustmentQuantity, lowStockThreshold, adjustmentReason };
   const errors = [];
 
   if (!Number.isFinite(price) || price <= 0) {
@@ -91,11 +94,20 @@ function normalizeInventoryInput(body) {
   if (Number.isFinite(price) && price > 100000000) {
     errors.push("Price is above the allowed limit.");
   }
-  if (!Number.isFinite(availableQuantity) || availableQuantity < 0) {
+  if (!allowedStockAdjustments.has(adjustmentMode)) {
+    errors.push("Choose whether to set, add, or remove stock.");
+  }
+  if (adjustmentMode === "set" && (!Number.isFinite(availableQuantity) || availableQuantity < 0)) {
     errors.push("Available quantity cannot be negative.");
   }
   if (Number.isFinite(availableQuantity) && availableQuantity > 100000000) {
     errors.push("Available quantity is above the allowed limit.");
+  }
+  if (["add", "remove"].includes(adjustmentMode) && (!Number.isFinite(adjustmentQuantity) || adjustmentQuantity <= 0)) {
+    errors.push("Adjustment quantity must be greater than zero.");
+  }
+  if (Number.isFinite(adjustmentQuantity) && adjustmentQuantity > 100000000) {
+    errors.push("Adjustment quantity is above the allowed limit.");
   }
   if (!Number.isFinite(lowStockThreshold) || lowStockThreshold < 0) {
     errors.push("Low-stock threshold cannot be negative.");
@@ -104,6 +116,20 @@ function normalizeInventoryInput(body) {
     errors.push("Stock adjustment reason is required.");
   }
 
+  return { input, errors };
+}
+
+function normalizeBuyerSignupInput(body) {
+  const input = {
+    name: cleanText(body.name, 120),
+    email: cleanText(body.email, 160).toLowerCase(),
+    phone: cleanText(body.phone, 40),
+    companyName: cleanText(body.companyName, 160)
+  };
+  const errors = [];
+  if (input.name.length < 2) errors.push("Buyer name is required.");
+  if (!isEmail(input.email)) errors.push("A valid buyer email is required.");
+  if (input.phone.length < 7) errors.push("Phone number is required.");
   return { input, errors };
 }
 
@@ -270,6 +296,7 @@ module.exports = {
   allowedStatuses,
   normalizeCancellationInput,
   normalizeCancellationDecisionInput,
+  normalizeBuyerSignupInput,
   normalizeInventoryInput,
   normalizeOrganizationInput,
   normalizeOrderInput,

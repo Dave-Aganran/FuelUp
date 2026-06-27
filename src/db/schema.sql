@@ -27,6 +27,24 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'operator' CHECK (role IN ('admin', 'operator')),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  invite_token TEXT UNIQUE,
+  invite_expires_at TIMESTAMPTZ,
+  password_reset_token TEXT UNIQUE,
+  password_reset_expires_at TIMESTAMPTZ,
+  activation_token TEXT UNIQUE,
+  activation_expires_at TIMESTAMPTZ,
+  activated_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS orders (
   id SERIAL PRIMARY KEY,
   order_reference TEXT UNIQUE,
@@ -53,21 +71,6 @@ CREATE TABLE IF NOT EXISTS orders (
   cancellation_decided_at TIMESTAMPTZ,
   cancellation_decided_by INTEGER REFERENCES users(id),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'ready', 'completed', 'cancelled')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
-  email TEXT NOT NULL UNIQUE,
-  name TEXT NOT NULL,
-  password_hash TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'operator' CHECK (role IN ('admin', 'operator')),
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
-  invite_token TEXT UNIQUE,
-  invite_expires_at TIMESTAMPTZ,
-  password_reset_token TEXT UNIQUE,
-  password_reset_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -102,6 +105,20 @@ CREATE TABLE IF NOT EXISTS notification_events (
   sent_at TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS buyer_accounts (
+  id SERIAL PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  company_name TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT FALSE,
+  activation_token TEXT UNIQUE,
+  activation_expires_at TIMESTAMPTZ,
+  activated_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_reference TEXT UNIQUE;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS unit_price NUMERIC(12, 2);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(14, 2);
@@ -122,6 +139,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS invite_token TEXT UNIQUE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS invite_expires_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token TEXT UNIQUE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_token TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_expires_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_products_outlet_id ON products(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
@@ -136,3 +156,5 @@ CREATE INDEX IF NOT EXISTS idx_user_outlets_outlet_id ON user_outlets(outlet_id)
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_events_entity ON audit_events(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_notification_events_created_at ON notification_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_buyer_accounts_email ON buyer_accounts(email);
+CREATE INDEX IF NOT EXISTS idx_buyer_accounts_activation_token ON buyer_accounts(activation_token);

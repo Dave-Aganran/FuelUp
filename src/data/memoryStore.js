@@ -47,6 +47,7 @@ const products = [
 
 const orders = [];
 const users = [];
+const buyerAccounts = [];
 const auditEvents = [];
 const notificationEvents = [];
 const userOutlets = [];
@@ -197,11 +198,22 @@ function createMemoryStore() {
 
       const before = {
         price: Number(product.price),
-        available_quantity: Number(product.available_quantity)
+        available_quantity: Number(product.available_quantity),
+        low_stock_threshold: Number(product.low_stock_threshold || 0)
       };
 
+      const currentStock = Number(product.available_quantity);
+      const nextStock = input.adjustmentMode === "add"
+        ? currentStock + Number(input.adjustmentQuantity)
+        : input.adjustmentMode === "remove"
+          ? currentStock - Number(input.adjustmentQuantity)
+          : Number(input.availableQuantity);
+      if (nextStock < 0) {
+        throw new Error("Stock cannot be reduced below zero.");
+      }
+
       product.price = Number(input.price);
-      product.available_quantity = Number(input.availableQuantity);
+      product.available_quantity = nextStock;
       product.low_stock_threshold = Number(input.lowStockThreshold || 0);
 
       recordAuditEvent({
@@ -215,6 +227,10 @@ function createMemoryStore() {
             price: product.price,
             available_quantity: product.available_quantity,
             low_stock_threshold: product.low_stock_threshold
+          },
+          adjustment: {
+            mode: input.adjustmentMode,
+            quantity: Number(input.adjustmentQuantity || 0)
           },
           reason: input.adjustmentReason
         }
@@ -409,13 +425,17 @@ function createMemoryStore() {
       };
       products.push(product);
 
+      const activationToken = `activate-${tokenCounter++}-${Date.now()}`;
       const user = {
         id: users.length + 1,
         email: input.operatorEmail,
         name: input.operatorName,
         password_hash: passwordHash,
         role: "operator",
-        is_active: true,
+        is_active: false,
+        activation_token: activationToken,
+        activation_expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+        activated_at: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -429,6 +449,52 @@ function createMemoryStore() {
         details: { outletId: outlet.id, productId: product.id, userId: user.id }
       });
       return { organization, outlet, product, user };
+    },
+
+    async activateUserByToken(token) {
+      const user = users.find((item) => item.activation_token === token);
+      if (!user) throw new Error("Invalid activation link.");
+      if (new Date(user.activation_expires_at).getTime() < Date.now()) throw new Error("Activation link has expired.");
+      user.is_active = true;
+      user.activation_token = "";
+      user.activation_expires_at = null;
+      user.activated_at = new Date().toISOString();
+      user.updated_at = new Date().toISOString();
+      recordAuditEvent({ actor: { email: user.email }, entityType: "user", entityId: user.id, action: "user.activated", details: { email: user.email } });
+      return user;
+    },
+
+    async createBuyerSignup(input) {
+      if (buyerAccounts.some((item) => item.email === input.email)) {
+        throw new Error("A buyer account already exists for this email.");
+      }
+      const buyer = {
+        id: buyerAccounts.length + 1,
+        email: input.email,
+        name: input.name,
+        phone: input.phone,
+        company_name: input.companyName || "",
+        is_active: false,
+        activation_token: `buyer-${tokenCounter++}-${Date.now()}`,
+        activation_expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+        activated_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      buyerAccounts.push(buyer);
+      return buyer;
+    },
+
+    async activateBuyerByToken(token) {
+      const buyer = buyerAccounts.find((item) => item.activation_token === token);
+      if (!buyer) throw new Error("Invalid activation link.");
+      if (new Date(buyer.activation_expires_at).getTime() < Date.now()) throw new Error("Activation link has expired.");
+      buyer.is_active = true;
+      buyer.activation_token = "";
+      buyer.activation_expires_at = null;
+      buyer.activated_at = new Date().toISOString();
+      buyer.updated_at = new Date().toISOString();
+      return buyer;
     },
 
     async findOrderForBuyer(reference, buyerEmail) {

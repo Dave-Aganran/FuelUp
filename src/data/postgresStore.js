@@ -266,6 +266,15 @@ function createPostgresStore(pool) {
         }
 
         const before = current.rows[0];
+        const currentStock = Number(before.available_quantity);
+        const nextStock = input.adjustmentMode === "add"
+          ? currentStock + Number(input.adjustmentQuantity)
+          : input.adjustmentMode === "remove"
+            ? currentStock - Number(input.adjustmentQuantity)
+            : Number(input.availableQuantity);
+        if (nextStock < 0) {
+          throw new Error("Stock cannot be reduced below zero.");
+        }
         const updated = await client.query(
           `
             UPDATE products
@@ -273,7 +282,7 @@ function createPostgresStore(pool) {
             WHERE id = $4
             RETURNING id, price::float, available_quantity::float, low_stock_threshold::float, updated_at
           `,
-          [input.price, input.availableQuantity, input.lowStockThreshold || 0, productId]
+          [input.price, nextStock, input.lowStockThreshold || 0, productId]
         );
 
         await client.query(
@@ -295,6 +304,10 @@ function createPostgresStore(pool) {
                 price: updated.rows[0].price,
                 available_quantity: updated.rows[0].available_quantity,
                 low_stock_threshold: updated.rows[0].low_stock_threshold
+              },
+              adjustment: {
+                mode: input.adjustmentMode,
+                quantity: Number(input.adjustmentQuantity || 0)
               },
               reason: input.adjustmentReason
             })
@@ -569,13 +582,14 @@ function createPostgresStore(pool) {
           [outlet.id, input.productName, input.unit, input.price, input.availableQuantity]
         );
         const product = productResult.rows[0];
+        const activationToken = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
         const userResult = await client.query(
           `
-            INSERT INTO users (email, name, password_hash, role)
-            VALUES ($1, $2, $3, 'operator')
-            RETURNING id, email, name, role, is_active
+            INSERT INTO users (email, name, password_hash, role, is_active, activation_token, activation_expires_at)
+            VALUES ($1, $2, $3, 'operator', FALSE, $4, NOW() + INTERVAL '24 hours')
+            RETURNING id, email, name, role, is_active, activation_token, activation_expires_at
           `,
-          [input.operatorEmail, input.operatorName, passwordHash]
+          [input.operatorEmail, input.operatorName, passwordHash, activationToken]
         );
         const user = userResult.rows[0];
         await client.query(
@@ -605,6 +619,69 @@ function createPostgresStore(pool) {
       } finally {
         client.release();
       }
+    },
+
+    async activateUserByToken(token) {
+      const { rows } = await pool.query(
+        `
+          UPDATE users
+          SET is_active = TRUE,
+              activation_token = NULL,
+              activation_expires_at = NULL,
+              activated_at = NOW(),
+              updated_at = NOW()
+          WHERE activation_token = $1 AND activation_expires_at > NOW()
+          RETURNING id, email, name, role, is_active
+        `,
+        [token]
+      );
+      if (rows.length === 0) throw new Error("Invalid or expired activation link.");
+      await this.recordAuditEvent({
+        actor: { email: rows[0].email },
+        entityType: "user",
+        entityId: rows[0].id,
+        action: "user.activated",
+        details: { email: rows[0].email }
+      });
+      return rows[0];
+    },
+
+    async createBuyerSignup(input) {
+      const activationToken = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
+      try {
+        const { rows } = await pool.query(
+          `
+            INSERT INTO buyer_accounts (email, name, phone, company_name, activation_token, activation_expires_at)
+            VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '24 hours')
+            RETURNING *
+          `,
+          [input.email, input.name, input.phone, input.companyName || null, activationToken]
+        );
+        return rows[0];
+      } catch (error) {
+        if (error.code === "23505") {
+          throw new Error("A buyer account already exists for this email.");
+        }
+        throw error;
+      }
+    },
+
+    async activateBuyerByToken(token) {
+      const { rows } = await pool.query(
+        `
+          UPDATE buyer_accounts
+          SET is_active = TRUE,
+              activation_token = NULL,
+              activation_expires_at = NULL,
+              activated_at = NOW(),
+              updated_at = NOW()
+          WHERE activation_token = $1 AND activation_expires_at > NOW()
+          RETURNING *
+        `,
+        [token]
+      );
+      if (rows.length === 0) throw new Error("Invalid or expired activation link.");
+      return rows[0];
     },
 
     async findOrderForBuyer(reference, buyerEmail) {

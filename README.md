@@ -5,6 +5,7 @@ FuelUp is a trading and ordering platform that connects buyers with downstream o
 ## Current Scope
 
 - Buyer marketplace homepage
+- Buyer account signup baseline for future loyalty, wallet, referral, and purchase-history features
 - Public tenant self-service onboarding
 - Outlet and product availability listing
 - Buyer order placement
@@ -34,8 +35,10 @@ FuelUp is a trading and ordering platform that connects buyers with downstream o
 - Admin account enable/disable controls
 - Migration runner foundation
 - Password reset tokens for operator/admin accounts
+- Email activation links for self-onboarded tenant operators and buyers
 - Cancellation approval/rejection with stock restoration
 - Low-stock thresholds and stock adjustment reasons
+- Inventory set, add, and remove stock controls
 - Resend email provider support
 - Production-oriented Render configuration
 
@@ -87,6 +90,9 @@ The app creates or updates its database tables and seed data automatically on st
 - `/inventory` - protected operator inventory controls
 - `/login` - operator login
 - `/self-onboarding` - public tenant, outlet, product, and operator signup
+- `/activate-account?token=...` - tenant operator account activation
+- `/buyers/signup` - buyer account signup
+- `/buyers/activate?token=...` - buyer account activation
 - `/track` - buyer order tracking and payment
 - `/settlements.csv` - admin settlement export
 - `/settlements` - admin settlement dashboard with date filters
@@ -132,6 +138,7 @@ Completed baseline:
 - Audited status and inventory changes
 - Protected price and stock controls
 - Public self-service tenant onboarding
+- Buyer signup and activation baseline
 - Integration test coverage for critical flows
 - GitHub Actions CI for pushes and pull requests
 - Structured logs with request IDs
@@ -146,6 +153,7 @@ Completed baseline:
 - Password reset token flow
 - Cancellation decision workflow with stock restoration
 - Low-stock thresholds and adjustment reasons
+- Add/remove/set stock adjustment workflow
 - Database indexes for common operational paths
 - Graceful shutdown
 - Health and readiness checks
