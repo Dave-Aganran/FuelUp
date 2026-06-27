@@ -101,6 +101,11 @@ function absoluteUrl(request, path) {
   return `${request.protocol}://${request.get("host")}${path}`;
 }
 
+function readPage(query, name = "page") {
+  const page = Number(query[name]);
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
 async function createApp(config = createConfig()) {
   const app = express();
   const store = await createStore(config);
@@ -190,7 +195,9 @@ async function createApp(config = createConfig()) {
   app.get("/", async (request, response, next) => {
     try {
       const products = await store.listMarketplace();
-      response.send(marketplacePage(products, store.mode, request.user));
+      response.send(marketplacePage(products, store.mode, request.user, {
+        page: readPage(request.query)
+      }));
     } catch (error) {
       next(error);
     }
@@ -578,6 +585,7 @@ async function createApp(config = createConfig()) {
         orders,
         summary,
         auditEvents,
+        page: readPage(request.query),
         storeMode: store.mode,
         message: request.query.message || "",
         user: request.user,
@@ -595,6 +603,7 @@ async function createApp(config = createConfig()) {
       response.send(inventoryPage({
         products,
         auditEvents,
+        page: readPage(request.query),
         storeMode: store.mode,
         message: request.query.message || "",
         error: request.query.error || "",
@@ -612,6 +621,8 @@ async function createApp(config = createConfig()) {
         users: await store.listUsers(),
         assignments: await store.listUserOutletAssignments(),
         outlets: await store.listOutlets(),
+        usersPage: readPage(request.query, "usersPage"),
+        assignmentsPage: readPage(request.query, "assignmentsPage"),
         storeMode: store.mode,
         message: request.query.message || "",
         error: request.query.error || "",
@@ -712,6 +723,7 @@ async function createApp(config = createConfig()) {
       response.send(settlementsPage({
         rows,
         filters,
+        page: readPage(request.query),
         storeMode: store.mode,
         user: request.user
       }));

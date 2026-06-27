@@ -3,6 +3,7 @@ const currency = new Intl.NumberFormat("en-NG", {
   currency: "NGN",
   maximumFractionDigits: 0
 });
+const PAGE_SIZE = 5;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -11,6 +12,57 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function paginateItems(items, page = 1, pageSize = PAGE_SIZE) {
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const currentPage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+  const start = (currentPage - 1) * pageSize;
+  return {
+    items: items.slice(start, start + pageSize),
+    currentPage,
+    pageSize,
+    totalItems,
+    totalPages
+  };
+}
+
+function paginationControls(pagination, { basePath, param = "page", query = {}, anchor = "" }) {
+  if (!pagination || pagination.totalItems <= pagination.pageSize) {
+    return "";
+  }
+
+  const makeHref = (page) => {
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value) !== "") {
+        params.set(key, String(value));
+      }
+    });
+    if (page > 1) {
+      params.set(param, String(page));
+    } else {
+      params.delete(param);
+    }
+    const queryString = params.toString();
+    return `${basePath}${queryString ? `?${queryString}` : ""}${anchor}`;
+  };
+
+  const previous = pagination.currentPage > 1
+    ? `<a class="button secondary" href="${escapeHtml(makeHref(pagination.currentPage - 1))}">Previous</a>`
+    : `<span class="button secondary disabled">Previous</span>`;
+  const next = pagination.currentPage < pagination.totalPages
+    ? `<a class="button secondary" href="${escapeHtml(makeHref(pagination.currentPage + 1))}">Next</a>`
+    : `<span class="button secondary disabled">Next</span>`;
+
+  return `
+    <nav class="pagination" aria-label="Pagination">
+      ${previous}
+      <span>Page ${pagination.currentPage} of ${pagination.totalPages} - ${pagination.totalItems} records</span>
+      ${next}
+    </nav>
+  `;
 }
 
 function formatQuantity(value) {
@@ -404,13 +456,14 @@ function selfOnboardingPage({ storeMode, error = "", message = "", values = {}, 
   });
 }
 
-function marketplacePage(products, storeMode, user = null) {
+function marketplacePage(products, storeMode, user = null, pagination = {}) {
   const openOutlets = new Set(products.filter((item) => item.is_open).map((item) => item.outlet_id)).size;
   const organizations = new Set(products.map((item) => item.organization_name)).size;
   const productCount = products.length;
   const lowestPrice = products.length ? Math.min(...products.map((item) => Number(item.price || 0))) : 0;
+  const paginatedProducts = paginateItems(products, pagination.page);
 
-  const cards = products
+  const cards = paginatedProducts.items
     .map((product) => {
       const availabilityClass = Number(product.available_quantity) > 5000 ? "good" : "watch";
       return `
@@ -516,6 +569,7 @@ function marketplacePage(products, storeMode, user = null) {
       <section class="grid">
         ${cards || `<p class="empty-panel">No products are currently listed.</p>`}
       </section>
+      ${paginationControls(paginatedProducts, { basePath: "/", anchor: "#marketplace" })}
     `,
     user
   });
@@ -758,8 +812,10 @@ function auditFeed(events) {
   `;
 }
 
-function dashboardPage({ orders, summary, auditEvents, storeMode, message = "", user, csrfToken }) {
+function dashboardPage({ orders, summary, auditEvents, page = 1, storeMode, message = "", user, csrfToken }) {
   const statuses = ["pending", "accepted", "ready", "completed", "cancelled"];
+  const paginatedOrders = paginateItems(orders, page);
+  const visibleAuditEvents = (auditEvents || []).slice(0, PAGE_SIZE);
   const statusCounts = statuses.reduce((counts, status) => {
     counts[status] = orders.filter((order) => order.status === status).length;
     return counts;
@@ -781,8 +837,8 @@ function dashboardPage({ orders, summary, auditEvents, storeMode, message = "", 
     )
     .join("");
 
-  const orderRows = orders.length
-    ? orders
+  const orderRows = paginatedOrders.items.length
+    ? paginatedOrders.items
         .map(
           (order) => `
             <tr>
@@ -902,19 +958,22 @@ function dashboardPage({ orders, summary, auditEvents, storeMode, message = "", 
             </thead>
             <tbody>${orderRows}</tbody>
           </table>
+          ${paginationControls(paginatedOrders, { basePath: "/dashboard" })}
         </div>
         <aside class="activity-panel">
           <p class="eyebrow">Recent audit trail</p>
           <h2>Activity</h2>
-          ${auditFeed(auditEvents)}
+          ${auditFeed(visibleAuditEvents)}
         </aside>
       </section>
     `
   });
 }
 
-function usersPage({ users, assignments = [], outlets = [], storeMode, message = "", error = "", user, csrfToken }) {
-  const rows = users.map((item) => `
+function usersPage({ users, assignments = [], outlets = [], usersPage = 1, assignmentsPage = 1, storeMode, message = "", error = "", user, csrfToken }) {
+  const paginatedUsers = paginateItems(users, usersPage);
+  const paginatedAssignments = paginateItems(assignments, assignmentsPage);
+  const rows = paginatedUsers.items.map((item) => `
     <tr>
       <td><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.email)}</span></td>
       <td>${escapeHtml(item.role)}</td>
@@ -939,7 +998,7 @@ function usersPage({ users, assignments = [], outlets = [], storeMode, message =
       </td>
     </tr>
   `).join("");
-  const assignmentRows = assignments.map((item) => `
+  const assignmentRows = paginatedAssignments.items.map((item) => `
     <tr><td>${escapeHtml(item.user_email)}</td><td>${escapeHtml(item.organization_name || "")}</td><td>${escapeHtml(item.outlet_name)}</td></tr>
   `).join("");
 
@@ -961,6 +1020,11 @@ function usersPage({ users, assignments = [], outlets = [], storeMode, message =
       <section class="ops-grid">
         <div class="table-wrap">
           <table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Controls</th></tr></thead><tbody>${rows}</tbody></table>
+          ${paginationControls(paginatedUsers, {
+            basePath: "/admin/users",
+            param: "usersPage",
+            query: { assignmentsPage: paginatedAssignments.currentPage }
+          })}
         </div>
         <aside class="activity-panel">
           <p class="eyebrow">Create user</p>
@@ -976,13 +1040,19 @@ function usersPage({ users, assignments = [], outlets = [], storeMode, message =
       </section>
       <section class="table-wrap spaced">
         <table><thead><tr><th>User</th><th>Organization</th><th>Outlet</th></tr></thead><tbody>${assignmentRows || `<tr><td colspan="3" class="empty">No outlet assignments yet.</td></tr>`}</tbody></table>
+        ${paginationControls(paginatedAssignments, {
+          basePath: "/admin/users",
+          param: "assignmentsPage",
+          query: { usersPage: paginatedUsers.currentPage }
+        })}
       </section>
     `
   });
 }
 
-function settlementsPage({ rows, filters, storeMode, user }) {
-  const tableRows = rows.map((row) => `
+function settlementsPage({ rows, filters, page = 1, storeMode, user }) {
+  const paginatedRows = paginateItems(rows, page);
+  const tableRows = paginatedRows.items.map((row) => `
     <tr>
       <td>${escapeHtml(row.order_reference)}</td>
       <td>${escapeHtml(row.buyer_email)}</td>
@@ -1011,6 +1081,7 @@ function settlementsPage({ rows, filters, storeMode, user }) {
       </section>
       <section class="table-wrap spaced">
         <table><thead><tr><th>Order</th><th>Buyer</th><th>Outlet</th><th>Amount</th><th>Reference</th><th>Paid at</th></tr></thead><tbody>${tableRows || `<tr><td colspan="6" class="empty">No paid orders for this period.</td></tr>`}</tbody></table>
+        ${paginationControls(paginatedRows, { basePath: "/settlements", query: filters })}
       </section>
     `
   });
@@ -1068,11 +1139,13 @@ function onboardingPage({ organizations, outlets, storeMode, message = "", error
   });
 }
 
-function inventoryPage({ products, auditEvents, storeMode, message = "", error = "", user, csrfToken }) {
+function inventoryPage({ products, auditEvents, page = 1, storeMode, message = "", error = "", user, csrfToken }) {
   const lowStock = products.filter((product) => Number(product.available_quantity || 0) <= Number(product.low_stock_threshold || 0)).length;
   const totalStock = products.reduce((sum, product) => sum + Number(product.available_quantity || 0), 0);
-  const rows = products.length
-    ? products.map((product) => `
+  const paginatedProducts = paginateItems(products, page);
+  const visibleAuditEvents = (auditEvents || []).slice(0, PAGE_SIZE);
+  const rows = paginatedProducts.items.length
+    ? paginatedProducts.items.map((product) => `
         <tr>
           <td>
             <strong>${escapeHtml(product.name)}</strong>
@@ -1161,11 +1234,12 @@ function inventoryPage({ products, auditEvents, storeMode, message = "", error =
             </thead>
             <tbody>${rows}</tbody>
           </table>
+          ${paginationControls(paginatedProducts, { basePath: "/inventory" })}
         </div>
         <aside class="activity-panel">
           <p class="eyebrow">Recent audit trail</p>
           <h2>Activity</h2>
-          ${auditFeed(auditEvents)}
+          ${auditFeed(visibleAuditEvents)}
         </aside>
       </section>
     `

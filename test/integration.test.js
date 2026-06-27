@@ -72,6 +72,19 @@ describe("FuelUp core flows", () => {
     assert.doesNotMatch(homeHtml, />Users</);
   });
 
+  it("paginates public marketplace listings after five records", async () => {
+    const firstPage = await fetch(`${baseUrl}/`);
+    const firstHtml = await firstPage.text();
+    assert.equal((firstHtml.match(/Reserve order/g) || []).length, 5);
+    assert.match(firstHtml, /Page 1 of 2 - 6 records/);
+    assert.match(firstHtml, /href="\/\?page=2#marketplace"/);
+
+    const secondPage = await fetch(`${baseUrl}/?page=2`);
+    const secondHtml = await secondPage.text();
+    assert.equal((secondHtml.match(/Reserve order/g) || []).length, 1);
+    assert.match(secondHtml, /Page 2 of 2 - 6 records/);
+  });
+
   it("creates buyer orders without operator login", async () => {
     const response = await fetch(`${baseUrl}/orders`, {
       method: "POST",

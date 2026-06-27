@@ -379,6 +379,14 @@ button:hover {
   background: #edf3ee;
 }
 
+.button.disabled,
+.button.disabled:hover {
+  background: #eef2ef;
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.7;
+}
+
 .wide {
   width: 100%;
 }
@@ -1935,6 +1943,14 @@ button {
   white-space: normal;
 }
 
+.button.disabled,
+.button.disabled:hover {
+  background: #eef2ef;
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.72;
+}
+
 .hero-actions,
 .listing-actions,
 .form-actions {
@@ -2036,6 +2052,22 @@ textarea {
   line-height: 1.25;
 }
 
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.pagination span:not(.button) {
+  min-width: 132px;
+  text-align: center;
+}
+
 @media (max-width: 900px) {
   main,
   .app-shell,
@@ -2116,6 +2148,15 @@ textarea {
   .button,
   button {
     min-height: 42px;
+  }
+
+  .pagination {
+    justify-content: stretch;
+  }
+
+  .pagination .button,
+  .pagination span:not(.button) {
+    flex: 1 1 100%;
   }
 
   .hero h1,
