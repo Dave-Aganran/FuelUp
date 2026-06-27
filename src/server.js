@@ -42,6 +42,7 @@ const {
   normalizePaymentStatus,
   normalizePasswordResetInput,
   normalizeProductInput,
+  normalizeSelfOnboardingInput,
   normalizeStatus,
   normalizeUserInput
 } = require("./validation");
@@ -54,6 +55,7 @@ const {
   orderFormPage,
   orderSuccessPage,
   resetPasswordPage,
+  selfOnboardingPage,
   settlementsPage,
   trackOrderPage,
   usersPage
@@ -163,10 +165,10 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.get("/", async (_request, response, next) => {
+  app.get("/", async (request, response, next) => {
     try {
       const products = await store.listMarketplace();
-      response.send(marketplacePage(products, store.mode));
+      response.send(marketplacePage(products, store.mode, request.user));
     } catch (error) {
       next(error);
     }
@@ -179,6 +181,47 @@ async function createApp(config = createConfig()) {
       error: request.query.error || "",
       adminConfigured
     }));
+  });
+
+  app.get("/self-onboarding", (request, response) => {
+    if (request.user) {
+      response.redirect("/dashboard");
+      return;
+    }
+    response.send(selfOnboardingPage({
+      storeMode: store.mode,
+      message: request.query.message || "",
+      error: request.query.error || ""
+    }));
+  });
+
+  app.post("/self-onboarding", async (request, response, next) => {
+    try {
+      const { input, errors } = normalizeSelfOnboardingInput(request.body);
+      if (errors.length > 0) {
+        response.status(400).send(selfOnboardingPage({
+          storeMode: store.mode,
+          error: errors.join(" "),
+          values: input
+        }));
+        return;
+      }
+
+      const tenant = await store.createTenantOnboarding(input, await hashPassword(input.password));
+      await dispatchNotification(store, config, {
+        recipientEmail: input.operatorEmail,
+        subject: "FuelUp tenant account created",
+        body: `Your FuelUp account for ${input.organizationName} is ready. Sign in with ${input.operatorEmail}.`
+      });
+      setAuthCookies(response, tenant.user, config);
+      response.redirect("/dashboard?message=Tenant%20created");
+    } catch (error) {
+      response.status(error.statusCode || 400).send(selfOnboardingPage({
+        storeMode: store.mode,
+        error: error.message,
+        values: request.body
+      }));
+    }
   });
 
   app.post("/login", async (request, response, next) => {
@@ -506,7 +549,8 @@ async function createApp(config = createConfig()) {
       response.send(settlementsPage({
         rows,
         filters,
-        storeMode: store.mode
+        storeMode: store.mode,
+        user: request.user
       }));
     } catch (error) {
       next(error);
@@ -529,6 +573,7 @@ async function createApp(config = createConfig()) {
         storeMode: store.mode,
         message: request.query.message || "",
         error: request.query.error || "",
+        user: request.user,
         csrfToken: getCsrfToken(request, config)
       }));
     } catch (error) {

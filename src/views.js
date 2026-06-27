@@ -84,7 +84,45 @@ function orderTimeline(order) {
   `;
 }
 
-function layout({ title, body, storeMode }) {
+function navItemsFor(user) {
+  const publicItems = [
+    { href: "/", label: "Marketplace", detail: "Buyer ordering" },
+    { href: "/track", label: "Track order", detail: "Buyer self-service" },
+    { href: "/self-onboarding", label: "Join FuelUp", detail: "Self-service onboarding" }
+  ];
+
+  if (!user) {
+    return [
+      ...publicItems,
+      { href: "/login", label: "Operator login", detail: "Secure access", cta: true }
+    ];
+  }
+
+  const operatorItems = [
+    { href: "/dashboard", label: "Operations", detail: "Fulfilment control" },
+    { href: "/inventory", label: "Inventory", detail: "Stock and pricing" }
+  ];
+  const adminItems = user.role === "admin"
+    ? [
+        { href: "/admin/users", label: "Users", detail: "Team access" },
+        { href: "/onboarding", label: "Onboarding", detail: "Organizations and outlets" },
+        { href: "/settlements", label: "Settlements", detail: "Paid order exports" }
+      ]
+    : [];
+
+  return [
+    ...operatorItems,
+    ...adminItems,
+    ...publicItems,
+    { href: "/dashboard", label: user.email, detail: `${user.role} session`, cta: true }
+  ];
+}
+
+function layout({ title, body, storeMode, user = null }) {
+  const nav = navItemsFor(user)
+    .map((item) => `<a class="${item.cta ? "nav-cta" : ""}" href="${escapeHtml(item.href)}"><span>${escapeHtml(item.label)}</span><small>${escapeHtml(item.detail)}</small></a>`)
+    .join("");
+
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -102,14 +140,7 @@ function layout({ title, body, storeMode }) {
         <span><strong>FuelUp</strong><small>Trading OS</small></span>
       </a>
       <nav class="side-nav" aria-label="Primary navigation">
-        <a href="/"><span>Marketplace</span><small>Buyer ordering</small></a>
-        <a href="/track"><span>Track order</span><small>Buyer self-service</small></a>
-        <a href="/dashboard"><span>Operations</span><small>Fulfilment control</small></a>
-        <a href="/inventory"><span>Inventory</span><small>Stock and pricing</small></a>
-        <a href="/admin/users"><span>Users</span><small>Team access</small></a>
-        <a href="/onboarding"><span>Onboarding</span><small>Organizations and outlets</small></a>
-        <a href="/settlements"><span>Settlements</span><small>Paid order exports</small></a>
-        <a class="nav-cta" href="/login"><span>Operator login</span><small>Secure access</small></a>
+        ${nav}
       </nav>
       <div class="sidebar-card">
         <span class="signal"></span>
@@ -161,7 +192,58 @@ function loginPage({ storeMode, nextPath, error = "", adminConfigured = true }) 
   });
 }
 
-function marketplacePage(products, storeMode) {
+function selfOnboardingPage({ storeMode, error = "", message = "", values = {} }) {
+  return layout({
+    title: "Join FuelUp",
+    storeMode,
+    body: `
+      <section class="form-shell">
+        <div class="form-grid">
+          <aside class="order-context">
+            <p class="eyebrow">Self-service onboarding</p>
+            <h1>Create your tenant, first outlet, and operator account.</h1>
+            <p>Use this path when a downstream organization wants to join FuelUp without waiting for an internal admin to create the tenant manually.</p>
+          </aside>
+          <section class="form-card">
+            ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
+            ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
+            <form method="post" action="/self-onboarding">
+              <h2>Organization</h2>
+              <label>Organization name<input required name="organizationName" maxlength="160" value="${escapeHtml(values.organizationName || "")}"></label>
+              <label>Organization email<input required type="email" name="organizationEmail" maxlength="160" value="${escapeHtml(values.organizationEmail || "")}"></label>
+
+              <h2>First outlet</h2>
+              <div class="field-row">
+                <label>Outlet name<input required name="outletName" maxlength="160" value="${escapeHtml(values.outletName || "")}"></label>
+                <label>City<input required name="city" maxlength="80" value="${escapeHtml(values.city || "")}"></label>
+              </div>
+              <label>Address<input required name="address" maxlength="240" value="${escapeHtml(values.address || "")}"></label>
+              <label>Phone<input required name="phone" maxlength="40" value="${escapeHtml(values.phone || "")}"></label>
+
+              <h2>First product</h2>
+              <div class="field-row">
+                <label>Product name<input required name="productName" maxlength="120" placeholder="PMS Petrol" value="${escapeHtml(values.productName || "")}"></label>
+                <label>Unit<input required name="unit" maxlength="30" placeholder="litre" value="${escapeHtml(values.unit || "")}"></label>
+              </div>
+              <div class="field-row">
+                <label>Price<input required type="number" name="price" min="1" step="0.01" value="${escapeHtml(values.price || "")}"></label>
+                <label>Available quantity<input required type="number" name="availableQuantity" min="0" step="0.01" value="${escapeHtml(values.availableQuantity || "")}"></label>
+              </div>
+
+              <h2>Operator credentials</h2>
+              <label>Your name<input required name="operatorName" maxlength="120" value="${escapeHtml(values.operatorName || "")}"></label>
+              <label>Email<input required type="email" name="operatorEmail" maxlength="160" value="${escapeHtml(values.operatorEmail || "")}"></label>
+              <label>Password<input required type="password" name="password" minlength="10" autocomplete="new-password"></label>
+              <button class="button wide" type="submit">Create tenant account</button>
+            </form>
+          </section>
+        </div>
+      </section>
+    `
+  });
+}
+
+function marketplacePage(products, storeMode, user = null) {
   const openOutlets = new Set(products.filter((item) => item.is_open).map((item) => item.outlet_id)).size;
   const organizations = new Set(products.map((item) => item.organization_name)).size;
   const productCount = products.length;
@@ -221,7 +303,7 @@ function marketplacePage(products, storeMode) {
           <div class="hero-actions">
             <a class="button" href="#marketplace">Browse products</a>
             <a class="button secondary" href="/track">Track an order</a>
-            <a class="button ghost" href="/dashboard">Open operations</a>
+            <a class="button ghost" href="${user ? "/dashboard" : "/self-onboarding"}">${user ? "Open operations" : "Join as outlet"}</a>
           </div>
         </div>
         <aside class="market-preview" aria-label="Marketplace snapshot">
@@ -273,7 +355,8 @@ function marketplacePage(products, storeMode) {
       <section class="grid">
         ${cards || `<p class="empty-panel">No products are currently listed.</p>`}
       </section>
-    `
+    `,
+    user
   });
 }
 
@@ -574,6 +657,7 @@ function dashboardPage({ orders, summary, auditEvents, storeMode, message = "", 
   return layout({
     title: "Operations Dashboard",
     storeMode,
+    user,
     body: `
       <section class="dashboard-head">
         <div>
@@ -672,6 +756,7 @@ function usersPage({ users, assignments = [], outlets = [], storeMode, message =
   return layout({
     title: "Users",
     storeMode,
+    user,
     body: `
       <section class="dashboard-head">
         <div><p class="eyebrow">Admin</p><h1>User management</h1><p>Signed in as ${escapeHtml(user.email)}.</p></div>
@@ -706,7 +791,7 @@ function usersPage({ users, assignments = [], outlets = [], storeMode, message =
   });
 }
 
-function settlementsPage({ rows, filters, storeMode }) {
+function settlementsPage({ rows, filters, storeMode, user }) {
   const tableRows = rows.map((row) => `
     <tr>
       <td>${escapeHtml(row.order_reference)}</td>
@@ -721,6 +806,7 @@ function settlementsPage({ rows, filters, storeMode }) {
   return layout({
     title: "Settlements",
     storeMode,
+    user,
     body: `
       <section class="dashboard-head">
         <div><p class="eyebrow">Finance</p><h1>Settlement reconciliation</h1><p>Review paid orders and export settlement records.</p></div>
@@ -740,10 +826,11 @@ function settlementsPage({ rows, filters, storeMode }) {
   });
 }
 
-function onboardingPage({ organizations, outlets, storeMode, message = "", error = "", csrfToken }) {
+function onboardingPage({ organizations, outlets, storeMode, message = "", error = "", user, csrfToken }) {
   return layout({
     title: "Onboarding",
     storeMode,
+    user,
     body: `
       <section class="dashboard-head">
         <div><p class="eyebrow">Admin</p><h1>Organization and outlet onboarding</h1><p>Create operators' trading entities and products.</p></div>
@@ -832,6 +919,7 @@ function inventoryPage({ products, auditEvents, storeMode, message = "", error =
   return layout({
     title: "Inventory",
     storeMode,
+    user,
     body: `
       <section class="dashboard-head">
         <div>
@@ -891,6 +979,7 @@ module.exports = {
   orderSuccessPage,
   onboardingPage,
   resetPasswordPage,
+  selfOnboardingPage,
   settlementsPage,
   trackOrderPage,
   usersPage

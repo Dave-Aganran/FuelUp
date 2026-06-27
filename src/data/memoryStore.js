@@ -83,6 +83,19 @@ function withOrderDetails(order) {
 }
 
 function createMemoryStore() {
+  function canAccessOutlet(actor, outletId) {
+    if (!actor || actor.role === "admin") return true;
+    return userOutlets.some((item) => item.user_id === actor.id && item.outlet_id === outletId);
+  }
+
+  function assertCanAccessOutlet(actor, outletId) {
+    if (!canAccessOutlet(actor, outletId)) {
+      const error = new Error("You do not have access to this outlet.");
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
   function recordAuditEvent(input) {
     const event = {
       id: auditEvents.length + 1,
@@ -180,6 +193,7 @@ function createMemoryStore() {
       if (!product) {
         throw new Error("Product not found.");
       }
+      assertCanAccessOutlet(actor, product.outlet_id);
 
       const before = {
         price: Number(product.price),
@@ -360,6 +374,63 @@ function createMemoryStore() {
       return withOutletAndOrganization(product);
     },
 
+    async createTenantOnboarding(input, passwordHash) {
+      if (users.some((item) => item.email === input.operatorEmail)) {
+        throw new Error("An account already exists for this operator email.");
+      }
+      const organization = {
+        id: organizations.length + 1,
+        name: input.organizationName,
+        contact_email: input.organizationEmail,
+        created_at: new Date().toISOString()
+      };
+      organizations.push(organization);
+
+      const outlet = {
+        id: outlets.length + 1,
+        organization_id: organization.id,
+        organization_name: organization.name,
+        name: input.outletName,
+        city: input.city,
+        address: input.address,
+        phone: input.phone,
+        is_open: true
+      };
+      outlets.push(outlet);
+
+      const product = {
+        id: products.length + 1,
+        outlet_id: outlet.id,
+        name: input.productName,
+        unit: input.unit,
+        price: Number(input.price),
+        available_quantity: Number(input.availableQuantity),
+        low_stock_threshold: 0
+      };
+      products.push(product);
+
+      const user = {
+        id: users.length + 1,
+        email: input.operatorEmail,
+        name: input.operatorName,
+        password_hash: passwordHash,
+        role: "operator",
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      users.push(user);
+      userOutlets.push({ user_id: user.id, outlet_id: outlet.id, created_at: new Date().toISOString() });
+      recordAuditEvent({
+        actor: { email: input.operatorEmail },
+        entityType: "organization",
+        entityId: organization.id,
+        action: "tenant.self_onboarded",
+        details: { outletId: outlet.id, productId: product.id, userId: user.id }
+      });
+      return { organization, outlet, product, user };
+    },
+
     async findOrderForBuyer(reference, buyerEmail) {
       const order = orders.find(
         (item) => item.order_reference === reference && item.buyer_email === buyerEmail
@@ -388,6 +459,7 @@ function createMemoryStore() {
     async decideCancellation(orderId, input, actor) {
       const order = orders.find((item) => item.id === orderId);
       if (!order) throw new Error("Order not found.");
+      assertCanAccessOutlet(actor, order.outlet_id);
       order.cancellation_decision = input.decision;
       order.cancellation_decision_reason = input.reason;
       order.cancellation_decided_by = actor?.id || null;
@@ -413,6 +485,7 @@ function createMemoryStore() {
     async updatePaymentStatus(orderId, paymentStatus, actor) {
       const order = orders.find((item) => item.id === orderId);
       if (!order) throw new Error("Order not found.");
+      assertCanAccessOutlet(actor, order.outlet_id);
       const previous = order.payment_status || "unpaid";
       order.payment_status = paymentStatus;
       order.updated_at = new Date().toISOString();
@@ -557,6 +630,7 @@ function createMemoryStore() {
       if (!order) {
         throw new Error("Order not found.");
       }
+      assertCanAccessOutlet(actor, order.outlet_id);
       const previousStatus = order.status;
       order.status = status;
       order.updated_at = new Date().toISOString();

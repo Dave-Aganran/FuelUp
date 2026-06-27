@@ -172,6 +172,43 @@ function normalizeProductInput(body) {
   return { input, errors };
 }
 
+function normalizeSelfOnboardingInput(body) {
+  const input = {
+    organizationName: cleanText(body.organizationName, 160),
+    organizationEmail: cleanText(body.organizationEmail, 160).toLowerCase(),
+    outletName: cleanText(body.outletName, 160),
+    city: cleanText(body.city, 80),
+    address: cleanText(body.address, 240),
+    phone: cleanText(body.phone, 40),
+    productName: cleanText(body.productName, 120),
+    unit: cleanText(body.unit, 30),
+    price: Number(body.price),
+    availableQuantity: Number(body.availableQuantity),
+    operatorName: cleanText(body.operatorName, 120),
+    operatorEmail: cleanText(body.operatorEmail, 160).toLowerCase(),
+    password: String(body.password || "")
+  };
+  const errors = [];
+
+  if (input.organizationName.length < 2) errors.push("Organization name is required.");
+  if (!isEmail(input.organizationEmail)) errors.push("A valid organization email is required.");
+  if (input.outletName.length < 2) errors.push("Outlet name is required.");
+  if (input.city.length < 2) errors.push("City is required.");
+  if (input.address.length < 5) errors.push("Address is required.");
+  if (input.phone.length < 7) errors.push("Phone number is required.");
+  if (input.productName.length < 2) errors.push("Product name is required.");
+  if (input.unit.length < 1) errors.push("Unit is required.");
+  if (!Number.isFinite(input.price) || input.price <= 0) errors.push("Price must be greater than zero.");
+  if (!Number.isFinite(input.availableQuantity) || input.availableQuantity < 0) {
+    errors.push("Available quantity cannot be negative.");
+  }
+  if (input.operatorName.length < 2) errors.push("Operator name is required.");
+  if (!isEmail(input.operatorEmail)) errors.push("A valid operator email is required.");
+  if (input.password.length < 10) errors.push("Password must be at least 10 characters.");
+
+  return { input, errors };
+}
+
 function normalizeCancellationInput(body) {
   const input = {
     orderReference: cleanText(body.orderReference, 40).toUpperCase(),
@@ -219,6 +256,7 @@ module.exports = {
   normalizePasswordResetInput,
   normalizePaymentStatus,
   normalizeProductInput,
+  normalizeSelfOnboardingInput,
   normalizeStatus,
   normalizeUserInput
 };

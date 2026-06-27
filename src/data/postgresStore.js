@@ -5,6 +5,42 @@ function createReference() {
 }
 
 function createPostgresStore(pool) {
+  async function assertActorCanAccessProduct(client, productId, actor) {
+    if (!actor || actor.role === "admin") return;
+    const { rowCount } = await client.query(
+      `
+        SELECT 1
+        FROM products p
+        JOIN user_outlets uo ON uo.outlet_id = p.outlet_id
+        WHERE p.id = $1 AND uo.user_id = $2
+      `,
+      [productId, actor.id]
+    );
+    if (rowCount === 0) {
+      const error = new Error("You do not have access to this outlet.");
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  async function assertActorCanAccessOrder(client, orderId, actor) {
+    if (!actor || actor.role === "admin") return;
+    const { rowCount } = await client.query(
+      `
+        SELECT 1
+        FROM orders ord
+        JOIN user_outlets uo ON uo.outlet_id = ord.outlet_id
+        WHERE ord.id = $1 AND uo.user_id = $2
+      `,
+      [orderId, actor.id]
+    );
+    if (rowCount === 0) {
+      const error = new Error("You do not have access to this outlet.");
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
   return {
     mode: "postgres",
 
@@ -220,6 +256,7 @@ function createPostgresStore(pool) {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
+        await assertActorCanAccessProduct(client, productId, actor);
         const current = await client.query(
           "SELECT id, price::float, available_quantity::float, low_stock_threshold::float FROM products WHERE id = $1 FOR UPDATE",
           [productId]
@@ -505,6 +542,71 @@ function createPostgresStore(pool) {
       return rows[0];
     },
 
+    async createTenantOnboarding(input, passwordHash) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const organizationResult = await client.query(
+          "INSERT INTO organizations (name, contact_email) VALUES ($1, $2) RETURNING *",
+          [input.organizationName, input.organizationEmail]
+        );
+        const organization = organizationResult.rows[0];
+        const outletResult = await client.query(
+          `
+            INSERT INTO outlets (organization_id, name, city, address, phone, is_open)
+            VALUES ($1, $2, $3, $4, $5, TRUE)
+            RETURNING *
+          `,
+          [organization.id, input.outletName, input.city, input.address, input.phone]
+        );
+        const outlet = outletResult.rows[0];
+        const productResult = await client.query(
+          `
+            INSERT INTO products (outlet_id, name, unit, price, available_quantity)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+          `,
+          [outlet.id, input.productName, input.unit, input.price, input.availableQuantity]
+        );
+        const product = productResult.rows[0];
+        const userResult = await client.query(
+          `
+            INSERT INTO users (email, name, password_hash, role)
+            VALUES ($1, $2, $3, 'operator')
+            RETURNING id, email, name, role, is_active
+          `,
+          [input.operatorEmail, input.operatorName, passwordHash]
+        );
+        const user = userResult.rows[0];
+        await client.query(
+          "INSERT INTO user_outlets (user_id, outlet_id) VALUES ($1, $2)",
+          [user.id, outlet.id]
+        );
+        await client.query(
+          `
+            INSERT INTO audit_events (actor_user_id, actor_email, entity_type, entity_id, action, details)
+            VALUES ($1, $2, 'organization', $3, 'tenant.self_onboarded', $4)
+          `,
+          [
+            user.id,
+            user.email,
+            organization.id,
+            JSON.stringify({ outletId: outlet.id, productId: product.id, userId: user.id })
+          ]
+        );
+        await client.query("COMMIT");
+        return { organization, outlet, product, user };
+      } catch (error) {
+        await client.query("ROLLBACK");
+        if (error.code === "23505") {
+          throw new Error("An account already exists for this operator email.");
+        }
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
     async findOrderForBuyer(reference, buyerEmail) {
       const { rows } = await pool.query(
         `
@@ -568,6 +670,7 @@ function createPostgresStore(pool) {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
+        await assertActorCanAccessOrder(client, orderId, actor);
         const current = await client.query(
           "SELECT id, order_reference, product_id, quantity::float, status FROM orders WHERE id = $1 FOR UPDATE",
           [orderId]
@@ -624,6 +727,7 @@ function createPostgresStore(pool) {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
+        await assertActorCanAccessOrder(client, orderId, actor);
         const current = await client.query("SELECT id, order_reference, payment_status FROM orders WHERE id = $1 FOR UPDATE", [
           orderId
         ]);
@@ -842,6 +946,7 @@ function createPostgresStore(pool) {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
+        await assertActorCanAccessOrder(client, orderId, actor);
         const current = await client.query("SELECT id, order_reference, status FROM orders WHERE id = $1 FOR UPDATE", [
           orderId
         ]);

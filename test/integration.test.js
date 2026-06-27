@@ -63,7 +63,11 @@ describe("FuelUp core flows", () => {
 
     const home = await fetch(`${baseUrl}/`);
     assert.equal(home.status, 200);
-    assert.match(await home.text(), /Verified downstream trading/);
+    const homeHtml = await home.text();
+    assert.match(homeHtml, /Verified downstream trading/);
+    assert.match(homeHtml, /Join FuelUp/);
+    assert.doesNotMatch(homeHtml, />Operations</);
+    assert.doesNotMatch(homeHtml, />Users</);
   });
 
   it("creates buyer orders without operator login", async () => {
@@ -398,5 +402,50 @@ describe("FuelUp core flows", () => {
       body: formBody({ token, password: "NewOperatorPass123!" })
     });
     assert.equal(reset.status, 302);
+  });
+
+  it("supports public tenant self-onboarding with scoped operator navigation", async () => {
+    const form = await fetch(`${baseUrl}/self-onboarding`);
+    assert.equal(form.status, 200);
+    assert.match(await form.text(), /Create your tenant/);
+
+    const onboard = await fetch(`${baseUrl}/self-onboarding`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        organizationName: "Self Serve Energy",
+        organizationEmail: "tenant@example.com",
+        outletName: "Self Serve Ajah",
+        city: "Lagos",
+        address: "Lekki-Epe Expressway",
+        phone: "+2348003334444",
+        productName: "PMS Petrol",
+        unit: "litre",
+        price: "730",
+        availableQuantity: "6000",
+        operatorName: "Tenant Operator",
+        operatorEmail: "tenant.operator@example.com",
+        password: "TenantPass123!"
+      })
+    });
+
+    assert.equal(onboard.status, 302);
+    assert.equal(onboard.headers.get("location"), "/dashboard?message=Tenant%20created");
+    const cookies = parseCookies(onboard.headers);
+
+    const dashboard = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: cookies } });
+    assert.equal(dashboard.status, 200);
+    const dashboardHtml = await dashboard.text();
+    assert.match(dashboardHtml, /tenant.operator@example.com/);
+    assert.match(dashboardHtml, />Inventory</);
+    assert.doesNotMatch(dashboardHtml, />Users</);
+    assert.doesNotMatch(dashboardHtml, />Settlements</);
+
+    const adminUsers = await fetch(`${baseUrl}/admin/users`, {
+      headers: { cookie: cookies },
+      redirect: "manual"
+    });
+    assert.equal(adminUsers.status, 403);
   });
 });

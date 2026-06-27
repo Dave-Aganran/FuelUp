@@ -5,6 +5,7 @@ FuelUp is a trading and ordering platform that connects buyers with downstream o
 ## Current Scope
 
 - Buyer marketplace homepage
+- Public tenant self-service onboarding
 - Outlet and product availability listing
 - Buyer order placement
 - Outlet/admin order board
@@ -27,6 +28,8 @@ FuelUp is a trading and ordering platform that connects buyers with downstream o
 - Paystack payment initialization, callback verification, and webhook signature verification
 - Notification outbox with optional webhook dispatch
 - Outlet assignment for scoped operator access
+- Role-aware navigation for authenticated operator/admin sessions
+- Tenant-scoped operator write controls
 - Settlement CSV export
 - Admin account enable/disable controls
 - Migration runner foundation
@@ -83,6 +86,7 @@ The app creates or updates its database tables and seed data automatically on st
 - `/dashboard` - outlet/admin order board
 - `/inventory` - protected operator inventory controls
 - `/login` - operator login
+- `/self-onboarding` - public tenant, outlet, product, and operator signup
 - `/track` - buyer order tracking and payment
 - `/settlements.csv` - admin settlement export
 - `/settlements` - admin settlement dashboard with date filters
@@ -127,6 +131,7 @@ Completed baseline:
 - CSRF protection for status updates and logout
 - Audited status and inventory changes
 - Protected price and stock controls
+- Public self-service tenant onboarding
 - Integration test coverage for critical flows
 - GitHub Actions CI for pushes and pull requests
 - Structured logs with request IDs
@@ -134,6 +139,7 @@ Completed baseline:
 - Notification outbox and optional webhook dispatch
 - Direct Resend email dispatch when configured
 - Outlet-scoped operators
+- Tenant-aware operator navigation and mutation controls
 - Settlement CSV export
 - Settlement dashboard with date filters
 - Account enable/disable controls
