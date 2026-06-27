@@ -79,6 +79,20 @@ async function createStore(config) {
   return { ...createPostgresStore(pool), pool };
 }
 
+const selfOnboardingSteps = ["organization", "outlet", "product", "operator", "review"];
+
+function selfOnboardingStep(value) {
+  return selfOnboardingSteps.includes(value) ? value : "organization";
+}
+
+function adjacentSelfOnboardingStep(step, direction) {
+  const index = Math.max(0, selfOnboardingSteps.indexOf(selfOnboardingStep(step)));
+  if (direction === "back") {
+    return selfOnboardingSteps[Math.max(0, index - 1)];
+  }
+  return selfOnboardingSteps[Math.min(selfOnboardingSteps.length - 1, index + 1)];
+}
+
 async function createApp(config = createConfig()) {
   const app = express();
   const store = await createStore(config);
@@ -191,18 +205,40 @@ async function createApp(config = createConfig()) {
     response.send(selfOnboardingPage({
       storeMode: store.mode,
       message: request.query.message || "",
-      error: request.query.error || ""
+      error: request.query.error || "",
+      step: selfOnboardingStep(request.query.step)
     }));
   });
 
   app.post("/self-onboarding", async (request, response, next) => {
     try {
-      const { input, errors } = normalizeSelfOnboardingInput(request.body);
+      const step = selfOnboardingStep(request.body.step);
+      const direction = String(request.body.direction || "next");
+      if (direction === "back") {
+        response.send(selfOnboardingPage({
+          storeMode: store.mode,
+          values: request.body,
+          step: adjacentSelfOnboardingStep(step, "back")
+        }));
+        return;
+      }
+
+      const { input, errors } = normalizeSelfOnboardingInput(request.body, step);
       if (errors.length > 0) {
         response.status(400).send(selfOnboardingPage({
           storeMode: store.mode,
           error: errors.join(" "),
-          values: input
+          values: input,
+          step
+        }));
+        return;
+      }
+
+      if (step !== "review" || direction !== "create") {
+        response.send(selfOnboardingPage({
+          storeMode: store.mode,
+          values: input,
+          step: adjacentSelfOnboardingStep(step, "next")
         }));
         return;
       }
@@ -219,7 +255,8 @@ async function createApp(config = createConfig()) {
       response.status(error.statusCode || 400).send(selfOnboardingPage({
         storeMode: store.mode,
         error: error.message,
-        values: request.body
+        values: request.body,
+        step: selfOnboardingStep(request.body.step)
       }));
     }
   });

@@ -425,6 +425,117 @@ button:hover {
   padding: 22px;
 }
 
+.onboarding-grid {
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+}
+
+.journey-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.journey-rail {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  margin: 8px 0 0;
+  list-style: none;
+}
+
+.journey-rail li {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 12px;
+  align-items: start;
+  color: var(--muted);
+}
+
+.journey-rail li > span {
+  display: grid;
+  place-items: center;
+  min-width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(16, 34, 31, 0.18);
+  background: #fffaf0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.journey-rail strong {
+  display: block;
+  color: var(--ink);
+}
+
+.journey-rail small {
+  display: block;
+  margin-top: 3px;
+}
+
+.journey-rail .current > span,
+.journey-rail .complete > span {
+  border-color: transparent;
+  background: var(--brand);
+  color: #fff;
+}
+
+.journey-rail .current strong {
+  color: var(--brand-dark);
+}
+
+.onboarding-card form {
+  display: grid;
+  gap: 16px;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.review-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  border: 1px solid rgba(16, 34, 31, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.review-list div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.35fr) 1fr;
+  gap: 16px;
+  padding: 14px;
+  background: #fff;
+  border-bottom: 1px solid rgba(16, 34, 31, 0.08);
+}
+
+.review-list div:last-child {
+  border-bottom: 0;
+}
+
+.review-list dt {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.review-list dd {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+
+.review-list span {
+  color: var(--muted);
+}
+
 .order-context {
   position: sticky;
   top: 92px;
@@ -1405,6 +1516,16 @@ footer {
   .checkout-steps,
   .timeline {
     grid-template-columns: 1fr;
+  }
+
+  .review-list div {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .form-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
   }
 
   .timeline li::before {

@@ -192,49 +192,169 @@ function loginPage({ storeMode, nextPath, error = "", adminConfigured = true }) 
   });
 }
 
-function selfOnboardingPage({ storeMode, error = "", message = "", values = {} }) {
+const onboardingSteps = [
+  { id: "organization", label: "Organization", detail: "Legal identity and contact" },
+  { id: "outlet", label: "Outlet", detail: "First station or depot" },
+  { id: "product", label: "Product", detail: "Initial inventory listing" },
+  { id: "operator", label: "Operator", detail: "Primary account owner" },
+  { id: "review", label: "Review", detail: "Confirm and create" }
+];
+
+function selfOnboardingHiddenFields(values, exclude = []) {
+  return [
+    "organizationName",
+    "organizationEmail",
+    "outletName",
+    "city",
+    "address",
+    "phone",
+    "productName",
+    "unit",
+    "price",
+    "availableQuantity",
+    "operatorName",
+    "operatorEmail"
+  ]
+    .filter((name) => !exclude.includes(name))
+    .map((name) => `<input type="hidden" name="${name}" value="${escapeHtml(values[name] || "")}">`)
+    .join("");
+}
+
+function selfOnboardingProgress(step) {
+  const activeIndex = Math.max(0, onboardingSteps.findIndex((item) => item.id === step));
+  return `
+    <ol class="journey-rail" aria-label="Onboarding progress">
+      ${onboardingSteps.map((item, index) => `
+        <li class="${index < activeIndex ? "complete" : ""} ${index === activeIndex ? "current" : ""}">
+          <span>${index < activeIndex ? "OK" : index + 1}</span>
+          <div>
+            <strong>${escapeHtml(item.label)}</strong>
+            <small>${escapeHtml(item.detail)}</small>
+          </div>
+        </li>
+      `).join("")}
+    </ol>
+  `;
+}
+
+function selfOnboardingSummary(values) {
+  const rows = [
+    ["Organization", values.organizationName, values.organizationEmail],
+    ["Outlet", values.outletName, `${values.address || ""}${values.city ? `, ${values.city}` : ""}`],
+    ["Contact", values.phone, ""],
+    ["Product", values.productName, `${values.availableQuantity || 0} ${values.unit || ""} at ${values.price ? currency.format(values.price) : "No price"}`],
+    ["Operator", values.operatorName, values.operatorEmail]
+  ];
+  return `
+    <dl class="review-list">
+      ${rows.map(([label, primary, secondary]) => `
+        <div>
+          <dt>${escapeHtml(label)}</dt>
+          <dd><strong>${escapeHtml(primary || "Not provided")}</strong>${secondary ? `<span>${escapeHtml(secondary)}</span>` : ""}</dd>
+        </div>
+      `).join("")}
+    </dl>
+  `;
+}
+
+function selfOnboardingStage({ step, values }) {
+  const hidden = (exclude = []) => selfOnboardingHiddenFields(values, exclude);
+  const backButton = step === "organization"
+    ? `<a class="button secondary" href="/">Back to marketplace</a>`
+    : `<button class="button secondary" type="submit" name="direction" value="back">Back</button>`;
+
+  if (step === "outlet") {
+    return `
+      <h2>Where will orders be fulfilled?</h2>
+      <p class="form-footnote">Use the first outlet, station, depot, or dispatch point that buyers should see.</p>
+      ${hidden(["outletName", "city", "address", "phone"])}
+      <input type="hidden" name="step" value="outlet">
+      <div class="field-row">
+        <label>Outlet name<input required name="outletName" maxlength="160" autocomplete="organization-title" value="${escapeHtml(values.outletName || "")}"></label>
+        <label>City<input required name="city" maxlength="80" autocomplete="address-level2" value="${escapeHtml(values.city || "")}"></label>
+      </div>
+      <label>Street address<input required name="address" maxlength="240" autocomplete="street-address" value="${escapeHtml(values.address || "")}"></label>
+      <label>Operations phone<input required name="phone" maxlength="40" autocomplete="tel" value="${escapeHtml(values.phone || "")}"></label>
+      <div class="form-actions">${backButton}<button class="button" type="submit" name="direction" value="next">Continue</button></div>
+    `;
+  }
+
+  if (step === "product") {
+    return `
+      <h2>What should buyers be able to order first?</h2>
+      <p class="form-footnote">Start with one live product. More products can be added after login.</p>
+      ${hidden(["productName", "unit", "price", "availableQuantity"])}
+      <input type="hidden" name="step" value="product">
+      <div class="field-row">
+        <label>Product name<input required name="productName" maxlength="120" placeholder="PMS Petrol" value="${escapeHtml(values.productName || "")}"></label>
+        <label>Unit<input required name="unit" maxlength="30" placeholder="litre" value="${escapeHtml(values.unit || "")}"></label>
+      </div>
+      <div class="field-row">
+        <label>Unit price<input required type="number" name="price" min="1" step="0.01" value="${escapeHtml(values.price || "")}"></label>
+        <label>Available quantity<input required type="number" name="availableQuantity" min="0" step="0.01" value="${escapeHtml(values.availableQuantity || "")}"></label>
+      </div>
+      <div class="form-actions">${backButton}<button class="button" type="submit" name="direction" value="next">Continue</button></div>
+    `;
+  }
+
+  if (step === "operator") {
+    return `
+      <h2>Who will manage this tenant?</h2>
+      <p class="form-footnote">This user becomes the first outlet operator and only sees modules relevant to the new outlet.</p>
+      ${hidden(["operatorName", "operatorEmail"])}
+      <input type="hidden" name="step" value="operator">
+      <label>Full name<input required name="operatorName" maxlength="120" autocomplete="name" value="${escapeHtml(values.operatorName || "")}"></label>
+      <label>Work email<input required type="email" name="operatorEmail" maxlength="160" autocomplete="email" value="${escapeHtml(values.operatorEmail || "")}"></label>
+      <div class="form-actions">${backButton}<button class="button" type="submit" name="direction" value="next">Review details</button></div>
+    `;
+  }
+
+  if (step === "review") {
+    return `
+      <h2>Review and create your tenant</h2>
+      <p class="form-footnote">Confirm the details, set a secure password, and FuelUp will create the tenant, outlet, product, and scoped operator session.</p>
+      ${hidden()}
+      <input type="hidden" name="step" value="review">
+      ${selfOnboardingSummary(values)}
+      <div class="field-row">
+        <label>Password<input required type="password" name="password" minlength="10" autocomplete="new-password"></label>
+        <label>Confirm password<input required type="password" name="confirmPassword" minlength="10" autocomplete="new-password"></label>
+      </div>
+      <label class="check-row"><input required type="checkbox" name="acceptedTerms" value="true"> I confirm these details are accurate and I am authorized to create this FuelUp tenant.</label>
+      <div class="form-actions">${backButton}<button class="button" type="submit" name="direction" value="create">Create tenant account</button></div>
+    `;
+  }
+
+  return `
+    <h2>Tell us about the organization</h2>
+    <p class="form-footnote">Use the legal or trading name buyers should recognize on FuelUp.</p>
+    ${hidden(["organizationName", "organizationEmail"])}
+    <input type="hidden" name="step" value="organization">
+    <label>Organization name<input required name="organizationName" maxlength="160" autocomplete="organization" value="${escapeHtml(values.organizationName || "")}"></label>
+    <label>Organization email<input required type="email" name="organizationEmail" maxlength="160" autocomplete="email" value="${escapeHtml(values.organizationEmail || "")}"></label>
+    <div class="form-actions">${backButton}<button class="button" type="submit" name="direction" value="next">Start onboarding</button></div>
+  `;
+}
+
+function selfOnboardingPage({ storeMode, error = "", message = "", values = {}, step = "organization" }) {
+  const safeStep = onboardingSteps.some((item) => item.id === step) ? step : "organization";
   return layout({
     title: "Join FuelUp",
     storeMode,
     body: `
       <section class="form-shell">
-        <div class="form-grid">
-          <aside class="order-context">
+        <div class="form-grid onboarding-grid">
+          <aside class="order-context journey-panel">
             <p class="eyebrow">Self-service onboarding</p>
-            <h1>Create your tenant, first outlet, and operator account.</h1>
-            <p>Use this path when a downstream organization wants to join FuelUp without waiting for an internal admin to create the tenant manually.</p>
+            <h1>Create your tenant step by step.</h1>
+            <p>FuelUp collects only the information needed to publish your first outlet, list inventory, and create a scoped operator login.</p>
+            ${selfOnboardingProgress(safeStep)}
           </aside>
-          <section class="form-card">
+          <section class="form-card onboarding-card">
             ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
             ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
             <form method="post" action="/self-onboarding">
-              <h2>Organization</h2>
-              <label>Organization name<input required name="organizationName" maxlength="160" value="${escapeHtml(values.organizationName || "")}"></label>
-              <label>Organization email<input required type="email" name="organizationEmail" maxlength="160" value="${escapeHtml(values.organizationEmail || "")}"></label>
-
-              <h2>First outlet</h2>
-              <div class="field-row">
-                <label>Outlet name<input required name="outletName" maxlength="160" value="${escapeHtml(values.outletName || "")}"></label>
-                <label>City<input required name="city" maxlength="80" value="${escapeHtml(values.city || "")}"></label>
-              </div>
-              <label>Address<input required name="address" maxlength="240" value="${escapeHtml(values.address || "")}"></label>
-              <label>Phone<input required name="phone" maxlength="40" value="${escapeHtml(values.phone || "")}"></label>
-
-              <h2>First product</h2>
-              <div class="field-row">
-                <label>Product name<input required name="productName" maxlength="120" placeholder="PMS Petrol" value="${escapeHtml(values.productName || "")}"></label>
-                <label>Unit<input required name="unit" maxlength="30" placeholder="litre" value="${escapeHtml(values.unit || "")}"></label>
-              </div>
-              <div class="field-row">
-                <label>Price<input required type="number" name="price" min="1" step="0.01" value="${escapeHtml(values.price || "")}"></label>
-                <label>Available quantity<input required type="number" name="availableQuantity" min="0" step="0.01" value="${escapeHtml(values.availableQuantity || "")}"></label>
-              </div>
-
-              <h2>Operator credentials</h2>
-              <label>Your name<input required name="operatorName" maxlength="120" value="${escapeHtml(values.operatorName || "")}"></label>
-              <label>Email<input required type="email" name="operatorEmail" maxlength="160" value="${escapeHtml(values.operatorEmail || "")}"></label>
-              <label>Password<input required type="password" name="password" minlength="10" autocomplete="new-password"></label>
-              <button class="button wide" type="submit">Create tenant account</button>
+              ${selfOnboardingStage({ step: safeStep, values })}
             </form>
           </section>
         </div>

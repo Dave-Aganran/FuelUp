@@ -172,7 +172,7 @@ function normalizeProductInput(body) {
   return { input, errors };
 }
 
-function normalizeSelfOnboardingInput(body) {
+function normalizeSelfOnboardingInput(body, step = "review") {
   const input = {
     organizationName: cleanText(body.organizationName, 160),
     organizationEmail: cleanText(body.organizationEmail, 160).toLowerCase(),
@@ -186,25 +186,46 @@ function normalizeSelfOnboardingInput(body) {
     availableQuantity: Number(body.availableQuantity),
     operatorName: cleanText(body.operatorName, 120),
     operatorEmail: cleanText(body.operatorEmail, 160).toLowerCase(),
-    password: String(body.password || "")
+    password: String(body.password || ""),
+    confirmPassword: String(body.confirmPassword || ""),
+    acceptedTerms: body.acceptedTerms === "true" || body.acceptedTerms === "on"
   };
   const errors = [];
+  const checks = new Set(
+    step === "organization" ? ["organization"]
+      : step === "outlet" ? ["organization", "outlet"]
+        : step === "product" ? ["organization", "outlet", "product"]
+          : step === "operator" ? ["organization", "outlet", "product", "operator"]
+            : ["organization", "outlet", "product", "operator", "review"]
+  );
 
-  if (input.organizationName.length < 2) errors.push("Organization name is required.");
-  if (!isEmail(input.organizationEmail)) errors.push("A valid organization email is required.");
-  if (input.outletName.length < 2) errors.push("Outlet name is required.");
-  if (input.city.length < 2) errors.push("City is required.");
-  if (input.address.length < 5) errors.push("Address is required.");
-  if (input.phone.length < 7) errors.push("Phone number is required.");
-  if (input.productName.length < 2) errors.push("Product name is required.");
-  if (input.unit.length < 1) errors.push("Unit is required.");
-  if (!Number.isFinite(input.price) || input.price <= 0) errors.push("Price must be greater than zero.");
-  if (!Number.isFinite(input.availableQuantity) || input.availableQuantity < 0) {
-    errors.push("Available quantity cannot be negative.");
+  if (checks.has("organization")) {
+    if (input.organizationName.length < 2) errors.push("Organization name is required.");
+    if (!isEmail(input.organizationEmail)) errors.push("A valid organization email is required.");
   }
-  if (input.operatorName.length < 2) errors.push("Operator name is required.");
-  if (!isEmail(input.operatorEmail)) errors.push("A valid operator email is required.");
-  if (input.password.length < 10) errors.push("Password must be at least 10 characters.");
+  if (checks.has("outlet")) {
+    if (input.outletName.length < 2) errors.push("Outlet name is required.");
+    if (input.city.length < 2) errors.push("City is required.");
+    if (input.address.length < 5) errors.push("Address is required.");
+    if (input.phone.length < 7) errors.push("Phone number is required.");
+  }
+  if (checks.has("product")) {
+    if (input.productName.length < 2) errors.push("Product name is required.");
+    if (input.unit.length < 1) errors.push("Unit is required.");
+    if (!Number.isFinite(input.price) || input.price <= 0) errors.push("Price must be greater than zero.");
+    if (!Number.isFinite(input.availableQuantity) || input.availableQuantity < 0) {
+      errors.push("Available quantity cannot be negative.");
+    }
+  }
+  if (checks.has("operator")) {
+    if (input.operatorName.length < 2) errors.push("Operator name is required.");
+    if (!isEmail(input.operatorEmail)) errors.push("A valid operator email is required.");
+  }
+  if (checks.has("review")) {
+    if (input.password.length < 10) errors.push("Password must be at least 10 characters.");
+    if (input.password !== input.confirmPassword) errors.push("Password confirmation must match.");
+    if (!input.acceptedTerms) errors.push("Confirm that you are authorized to create this tenant.");
+  }
 
   return { input, errors };
 }

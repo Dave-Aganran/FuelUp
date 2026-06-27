@@ -407,26 +407,88 @@ describe("FuelUp core flows", () => {
   it("supports public tenant self-onboarding with scoped operator navigation", async () => {
     const form = await fetch(`${baseUrl}/self-onboarding`);
     assert.equal(form.status, 200);
-    assert.match(await form.text(), /Create your tenant/);
+    const formHtml = await form.text();
+    assert.match(formHtml, /Create your tenant/);
+    assert.match(formHtml, /Organization/);
+    assert.match(formHtml, /Outlet/);
+
+    const tenantValues = {
+      organizationName: "Self Serve Energy",
+      organizationEmail: "tenant@example.com",
+      outletName: "Self Serve Ajah",
+      city: "Lagos",
+      address: "Lekki-Epe Expressway",
+      phone: "+2348003334444",
+      productName: "PMS Petrol",
+      unit: "litre",
+      price: "730",
+      availableQuantity: "6000",
+      operatorName: "Tenant Operator",
+      operatorEmail: "tenant.operator@example.com"
+    };
+
+    const organization = await fetch(`${baseUrl}/self-onboarding`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        step: "organization",
+        direction: "next",
+        organizationName: tenantValues.organizationName,
+        organizationEmail: tenantValues.organizationEmail
+      })
+    });
+    assert.equal(organization.status, 200);
+    assert.match(await organization.text(), /Where will orders be fulfilled/);
+
+    const outlet = await fetch(`${baseUrl}/self-onboarding`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        ...tenantValues,
+        step: "outlet",
+        direction: "next"
+      })
+    });
+    assert.equal(outlet.status, 200);
+    assert.match(await outlet.text(), /What should buyers be able to order first/);
+
+    const product = await fetch(`${baseUrl}/self-onboarding`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        ...tenantValues,
+        step: "product",
+        direction: "next"
+      })
+    });
+    assert.equal(product.status, 200);
+    assert.match(await product.text(), /Who will manage this tenant/);
+
+    const operator = await fetch(`${baseUrl}/self-onboarding`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        ...tenantValues,
+        step: "operator",
+        direction: "next"
+      })
+    });
+    assert.equal(operator.status, 200);
+    const reviewHtml = await operator.text();
+    assert.match(reviewHtml, /Review and create your tenant/);
+    assert.match(reviewHtml, /Self Serve Energy/);
 
     const onboard = await fetch(`${baseUrl}/self-onboarding`, {
       method: "POST",
       redirect: "manual",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: formBody({
-        organizationName: "Self Serve Energy",
-        organizationEmail: "tenant@example.com",
-        outletName: "Self Serve Ajah",
-        city: "Lagos",
-        address: "Lekki-Epe Expressway",
-        phone: "+2348003334444",
-        productName: "PMS Petrol",
-        unit: "litre",
-        price: "730",
-        availableQuantity: "6000",
-        operatorName: "Tenant Operator",
-        operatorEmail: "tenant.operator@example.com",
-        password: "TenantPass123!"
+        ...tenantValues,
+        step: "review",
+        direction: "create",
+        password: "TenantPass123!",
+        confirmPassword: "TenantPass123!",
+        acceptedTerms: "true"
       })
     });
 
