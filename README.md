@@ -59,6 +59,14 @@ Without `DATABASE_URL`, the app uses seeded in-memory demo data.
 
 To run with PostgreSQL, set `DATABASE_URL` before starting the app. The database schema and seed data are created automatically on startup.
 
+For a richer UAT reset, run:
+
+```bash
+npm run db:seed:uat
+```
+
+That command clears existing users, buyer accounts, orders, notifications, audit rows, outlets, and products, then loads 5 organizations, 10 outlets, and 30 stock items. If `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set, it recreates one `site_manager` account so the back office remains accessible after the reset.
+
 ## Checks
 
 ```powershell

@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
+const seedData = require("./uatSeedData");
 
 async function initDatabase(pool) {
   const schema = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8");
@@ -11,28 +12,51 @@ async function initDatabase(pool) {
     return;
   }
 
-  await pool.query(`
-    INSERT INTO organizations (name, contact_email) VALUES
-      ('Northstar Energy Services', 'ops@northstar.example'),
-      ('Lagos Prime Fuels', 'support@lagosprime.example');
-  `);
+  const organizationIds = new Map();
+  for (const organization of seedData.organizations) {
+    const result = await pool.query(
+      "INSERT INTO organizations (name, contact_email) VALUES ($1, $2) RETURNING id",
+      [organization.name, organization.contact_email]
+    );
+    organizationIds.set(organization.name, result.rows[0].id);
+  }
 
-  await pool.query(`
-    INSERT INTO outlets (organization_id, name, city, address, phone, is_open) VALUES
-      (1, 'Northstar Lekki Phase 1', 'Lagos', 'Admiralty Way, Lekki Phase 1', '+234 800 100 1001', TRUE),
-      (1, 'Northstar Victoria Island', 'Lagos', 'Ahmadu Bello Way, VI', '+234 800 100 1002', TRUE),
-      (2, 'Lagos Prime Ikeja', 'Lagos', 'Obafemi Awolowo Way, Ikeja', '+234 800 200 2001', TRUE);
-  `);
+  const outletIds = new Map();
+  for (const outlet of seedData.outlets) {
+    const result = await pool.query(
+      `
+        INSERT INTO outlets (organization_id, name, city, address, phone, is_open)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+      `,
+      [
+        organizationIds.get(outlet.organization_name),
+        outlet.name,
+        outlet.city,
+        outlet.address,
+        outlet.phone,
+        outlet.is_open
+      ]
+    );
+    outletIds.set(outlet.name, result.rows[0].id);
+  }
 
-  await pool.query(`
-    INSERT INTO products (outlet_id, name, unit, price, available_quantity) VALUES
-      (1, 'PMS Petrol', 'litre', 720.00, 18000),
-      (1, 'AGO Diesel', 'litre', 1120.00, 9000),
-      (2, 'PMS Petrol', 'litre', 725.00, 12000),
-      (2, 'LPG Cooking Gas', 'kg', 1250.00, 2200),
-      (3, 'AGO Diesel', 'litre', 1115.00, 16000),
-      (3, 'Engine Oil 5W-30', 'bottle', 8500.00, 140);
-  `);
+  for (const product of seedData.products) {
+    await pool.query(
+      `
+        INSERT INTO products (outlet_id, name, unit, price, available_quantity, low_stock_threshold)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `,
+      [
+        outletIds.get(product.outlet_name),
+        product.name,
+        product.unit,
+        product.price,
+        product.available_quantity,
+        product.low_stock_threshold
+      ]
+    );
+  }
 }
 
 async function main() {

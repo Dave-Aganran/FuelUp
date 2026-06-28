@@ -1,49 +1,31 @@
-const organizations = [
-  { id: 1, name: "Northstar Energy Services", contact_email: "ops@northstar.example" },
-  { id: 2, name: "Lagos Prime Fuels", contact_email: "support@lagosprime.example" }
-];
+const seedData = require("../db/uatSeedData");
 
-const outlets = [
-  {
-    id: 1,
-    organization_id: 1,
-    organization_name: "Northstar Energy Services",
-    name: "Northstar Lekki Phase 1",
-    city: "Lagos",
-    address: "Admiralty Way, Lekki Phase 1",
-    phone: "+234 800 100 1001",
-    is_open: true
-  },
-  {
-    id: 2,
-    organization_id: 1,
-    organization_name: "Northstar Energy Services",
-    name: "Northstar Victoria Island",
-    city: "Lagos",
-    address: "Ahmadu Bello Way, VI",
-    phone: "+234 800 100 1002",
-    is_open: true
-  },
-  {
-    id: 3,
-    organization_id: 2,
-    organization_name: "Lagos Prime Fuels",
-    name: "Lagos Prime Ikeja",
-    city: "Lagos",
-    address: "Obafemi Awolowo Way, Ikeja",
-    phone: "+234 800 200 2001",
-    is_open: true
-  }
-];
+const organizations = seedData.organizations.map((organization, index) => ({
+  id: index + 1,
+  ...organization
+}));
 
-const products = [
-  { id: 1, outlet_id: 1, name: "PMS Petrol", unit: "litre", price: 720, available_quantity: 18000 },
-  { id: 2, outlet_id: 1, name: "AGO Diesel", unit: "litre", price: 1120, available_quantity: 9000 },
-  { id: 3, outlet_id: 2, name: "PMS Petrol", unit: "litre", price: 725, available_quantity: 12000 },
-  { id: 4, outlet_id: 2, name: "LPG Cooking Gas", unit: "kg", price: 1250, available_quantity: 2200 },
-  { id: 5, outlet_id: 3, name: "AGO Diesel", unit: "litre", price: 1115, available_quantity: 16000 },
-  { id: 6, outlet_id: 3, name: "Engine Oil 5W-30", unit: "bottle", price: 8500, available_quantity: 140 }
-];
+const outlets = seedData.outlets.map((outlet, index) => {
+  const organization = organizations.find((item) => item.name === outlet.organization_name);
+  return {
+    id: index + 1,
+    organization_id: organization.id,
+    ...outlet
+  };
+});
+
+const products = seedData.products.map((product, index) => {
+  const outlet = outlets.find((item) => item.name === product.outlet_name);
+  return {
+    id: index + 1,
+    outlet_id: outlet.id,
+    name: product.name,
+    unit: product.unit,
+    price: product.price,
+    available_quantity: product.available_quantity,
+    low_stock_threshold: product.low_stock_threshold
+  };
+});
 
 const orders = [];
 const users = [];

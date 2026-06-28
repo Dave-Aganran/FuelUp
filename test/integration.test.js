@@ -78,13 +78,13 @@ describe("FuelUp core flows", () => {
     const firstPage = await fetch(`${baseUrl}/`);
     const firstHtml = await firstPage.text();
     assert.equal((firstHtml.match(/Reserve order/g) || []).length, 5);
-    assert.match(firstHtml, /Page 1 of 2 - 6 records/);
+    assert.match(firstHtml, /Page 1 of 6 - 30 records/);
     assert.match(firstHtml, /href="\/\?page=2#marketplace"/);
 
     const secondPage = await fetch(`${baseUrl}/?page=2`);
     const secondHtml = await secondPage.text();
-    assert.equal((secondHtml.match(/Reserve order/g) || []).length, 1);
-    assert.match(secondHtml, /Page 2 of 2 - 6 records/);
+    assert.equal((secondHtml.match(/Reserve order/g) || []).length, 5);
+    assert.match(secondHtml, /Page 2 of 6 - 30 records/);
   });
 
   it("creates buyer orders without operator login", async () => {
@@ -314,11 +314,11 @@ describe("FuelUp core flows", () => {
     const scopedInventory = await fetch(`${baseUrl}/inventory`, { headers: { cookie: scopedAdminCookies } });
     assert.equal(scopedInventory.status, 200);
     const scopedInventoryHtml = await scopedInventory.text();
-    assert.match(scopedInventoryHtml, /Northstar Lekki Phase 1/);
+    assert.match(scopedInventoryHtml, /MRS Lekki Admiralty/);
     assert.doesNotMatch(scopedInventoryHtml, /Northstar Victoria Island/);
-    assert.doesNotMatch(scopedInventoryHtml, /LPG Cooking Gas/);
+    assert.doesNotMatch(scopedInventoryHtml, /MRS Victoria Island/);
     const scopedInventoryCsrf = csrfFrom(scopedInventoryHtml);
-    const blockedOutletBUpdate = await fetch(`${baseUrl}/products/3/inventory`, {
+    const blockedOutletBUpdate = await fetch(`${baseUrl}/products/5/inventory`, {
       method: "POST",
       redirect: "manual",
       headers: { cookie: scopedAdminCookies, "content-type": "application/x-www-form-urlencoded" },
