@@ -48,6 +48,7 @@ const products = [
 const orders = [];
 const users = [];
 const buyerAccounts = [];
+const loyaltyPrograms = [];
 const auditEvents = [];
 const notificationEvents = [];
 const userOutlets = [];
@@ -84,8 +85,16 @@ function withOrderDetails(order) {
 }
 
 function createMemoryStore() {
+  function isSiteManager(actor) {
+    return !actor || actor.role === "site_manager";
+  }
+
+  function isScopedActor(actor) {
+    return actor && !isSiteManager(actor);
+  }
+
   function canAccessOutlet(actor, outletId) {
-    if (!actor || actor.role === "admin") return true;
+    if (isSiteManager(actor)) return true;
     return userOutlets.some((item) => item.user_id === actor.id && item.outlet_id === outletId);
   }
 
@@ -170,7 +179,7 @@ function createMemoryStore() {
     },
 
     async listOrders(user) {
-      const allowedOutletIds = user?.role === "operator"
+      const allowedOutletIds = isScopedActor(user)
         ? userOutlets.filter((item) => item.user_id === user.id).map((item) => item.outlet_id)
         : null;
       return orders
@@ -181,7 +190,7 @@ function createMemoryStore() {
     },
 
     async listInventory(user) {
-      const allowedOutletIds = user?.role === "operator"
+      const allowedOutletIds = isScopedActor(user)
         ? userOutlets.filter((item) => item.user_id === user.id).map((item) => item.outlet_id)
         : null;
       return products
@@ -256,13 +265,23 @@ function createMemoryStore() {
       return users.find((item) => item.id === id && item.is_active) || null;
     },
 
-    async listUsers() {
+    async listUsers(actor) {
+      if (isScopedActor(actor)) {
+        const outletIds = userOutlets.filter((item) => item.user_id === actor.id).map((item) => item.outlet_id);
+        const userIds = new Set(userOutlets.filter((item) => outletIds.includes(item.outlet_id)).map((item) => item.user_id));
+        return users.filter((user) => userIds.has(user.id)).sort((a, b) => a.email.localeCompare(b.email));
+      }
       return users.slice().sort((a, b) => a.email.localeCompare(b.email));
     },
 
     async setUserActive(userId, isActive, actor) {
       const user = users.find((item) => item.id === userId);
       if (!user) throw new Error("User not found.");
+      if (isScopedActor(actor) && !userOutlets.some((item) => item.user_id === userId && canAccessOutlet(actor, item.outlet_id))) {
+        const error = new Error("You do not have access to this user.");
+        error.statusCode = 403;
+        throw error;
+      }
       user.is_active = isActive;
       user.updated_at = new Date().toISOString();
       recordAuditEvent({ actor, entityType: "user", entityId: userId, action: isActive ? "user.enabled" : "user.disabled", details: { email: user.email } });
@@ -272,6 +291,11 @@ function createMemoryStore() {
     async createPasswordReset(userId, actor) {
       const user = users.find((item) => item.id === userId);
       if (!user) throw new Error("User not found.");
+      if (isScopedActor(actor) && !userOutlets.some((item) => item.user_id === userId && canAccessOutlet(actor, item.outlet_id))) {
+        const error = new Error("You do not have access to this user.");
+        error.statusCode = 403;
+        throw error;
+      }
       user.password_reset_token = `reset-${tokenCounter++}-${Date.now()}`;
       user.password_reset_expires_at = new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
       recordAuditEvent({ actor, entityType: "user", entityId: userId, action: "user.password_reset_created", details: { email: user.email } });
@@ -319,6 +343,7 @@ function createMemoryStore() {
     },
 
     async assignUserOutlet(userId, outletId, actor) {
+      assertCanAccessOutlet(actor, outletId);
       if (!users.find((item) => item.id === userId)) throw new Error("User not found.");
       if (!outlets.find((item) => item.id === outletId)) throw new Error("Outlet not found.");
       if (!userOutlets.find((item) => item.user_id === userId && item.outlet_id === outletId)) {
@@ -327,8 +352,10 @@ function createMemoryStore() {
       recordAuditEvent({ actor, entityType: "user", entityId: userId, action: "user.outlet_assigned", details: { outletId } });
     },
 
-    async listUserOutletAssignments() {
-      return userOutlets.map((assignment) => {
+    async listUserOutletAssignments(actor) {
+      return userOutlets
+        .filter((assignment) => canAccessOutlet(actor, assignment.outlet_id))
+        .map((assignment) => {
         const user = users.find((item) => item.id === assignment.user_id);
         const outlet = outlets.find((item) => item.id === assignment.outlet_id);
         return { ...assignment, user_email: user?.email || "", outlet_name: outlet?.name || "" };
@@ -339,8 +366,8 @@ function createMemoryStore() {
       return organizations.slice();
     },
 
-    async listOutlets() {
-      return outlets.slice();
+    async listOutlets(actor) {
+      return outlets.filter((outlet) => canAccessOutlet(actor, outlet.id));
     },
 
     async createOrganization(input, actor) {
@@ -376,6 +403,7 @@ function createMemoryStore() {
     async createProduct(input, actor) {
       const outlet = outlets.find((item) => item.id === input.outletId);
       if (!outlet) throw new Error("Outlet not found.");
+      assertCanAccessOutlet(actor, outlet.id);
       const product = {
         id: products.length + 1,
         outlet_id: outlet.id,
@@ -414,16 +442,19 @@ function createMemoryStore() {
       };
       outlets.push(outlet);
 
-      const product = {
-        id: products.length + 1,
-        outlet_id: outlet.id,
-        name: input.productName,
-        unit: input.unit,
-        price: Number(input.price),
-        available_quantity: Number(input.availableQuantity),
-        low_stock_threshold: 0
-      };
-      products.push(product);
+      const createdProducts = input.products.map((productInput) => {
+        const product = {
+          id: products.length + 1,
+          outlet_id: outlet.id,
+          name: productInput.name,
+          unit: productInput.unit,
+          price: Number(productInput.price),
+          available_quantity: Number(productInput.availableQuantity),
+          low_stock_threshold: 0
+        };
+        products.push(product);
+        return product;
+      });
 
       const activationToken = `activate-${tokenCounter++}-${Date.now()}`;
       const user = {
@@ -431,7 +462,7 @@ function createMemoryStore() {
         email: input.operatorEmail,
         name: input.operatorName,
         password_hash: passwordHash,
-        role: "operator",
+        role: "admin",
         is_active: false,
         activation_token: activationToken,
         activation_expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
@@ -446,9 +477,9 @@ function createMemoryStore() {
         entityType: "organization",
         entityId: organization.id,
         action: "tenant.self_onboarded",
-        details: { outletId: outlet.id, productId: product.id, userId: user.id }
+        details: { outletId: outlet.id, productIds: createdProducts.map((product) => product.id), userId: user.id }
       });
-      return { organization, outlet, product, user };
+      return { organization, outlet, product: createdProducts[0], products: createdProducts, user };
     },
 
     async activateUserByToken(token) {
@@ -605,6 +636,8 @@ function createMemoryStore() {
     async updateProduct(id, input, actor) {
       const product = products.find((item) => item.id === id);
       if (!product) throw new Error("Product not found.");
+      assertCanAccessOutlet(actor, product.outlet_id);
+      assertCanAccessOutlet(actor, input.outletId);
       Object.assign(product, {
         outlet_id: input.outletId,
         name: input.name,
@@ -614,6 +647,32 @@ function createMemoryStore() {
       });
       recordAuditEvent({ actor, entityType: "product", entityId: id, action: "product.updated", details: input });
       return withOutletAndOrganization(product);
+    },
+
+    async listLoyaltyPrograms(actor) {
+      return loyaltyPrograms
+        .filter((program) => canAccessOutlet(actor, program.outlet_id))
+        .map((program) => {
+          const outlet = outlets.find((item) => item.id === program.outlet_id);
+          return { ...program, outlet_name: outlet?.name || "", organization_name: outlet?.organization_name || "" };
+        });
+    },
+
+    async createLoyaltyProgram(input, actor) {
+      assertCanAccessOutlet(actor, input.outletId);
+      const program = {
+        id: loyaltyPrograms.length + 1,
+        outlet_id: input.outletId,
+        name: input.name,
+        reward_type: input.rewardType,
+        reward_value: Number(input.rewardValue),
+        referral_bonus: Number(input.referralBonus),
+        is_active: input.isActive,
+        created_at: new Date().toISOString()
+      };
+      loyaltyPrograms.push(program);
+      recordAuditEvent({ actor, entityType: "loyalty_program", entityId: program.id, action: "loyalty.created", details: program });
+      return program;
     },
 
     async createNotification(input) {

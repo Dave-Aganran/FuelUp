@@ -5,8 +5,16 @@ function createReference() {
 }
 
 function createPostgresStore(pool) {
+  function isSiteManager(actor) {
+    return !actor || actor.role === "site_manager";
+  }
+
+  function isScopedActor(actor) {
+    return actor && !isSiteManager(actor);
+  }
+
   async function assertActorCanAccessProduct(client, productId, actor) {
-    if (!actor || actor.role === "admin") return;
+    if (isSiteManager(actor)) return;
     const { rowCount } = await client.query(
       `
         SELECT 1
@@ -23,8 +31,21 @@ function createPostgresStore(pool) {
     }
   }
 
+  async function assertActorCanAccessOutlet(client, outletId, actor) {
+    if (isSiteManager(actor)) return;
+    const { rowCount } = await client.query(
+      "SELECT 1 FROM user_outlets WHERE outlet_id = $1 AND user_id = $2",
+      [outletId, actor.id]
+    );
+    if (rowCount === 0) {
+      const error = new Error("You do not have access to this outlet.");
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
   async function assertActorCanAccessOrder(client, orderId, actor) {
-    if (!actor || actor.role === "admin") return;
+    if (isSiteManager(actor)) return;
     const { rowCount } = await client.query(
       `
         SELECT 1
@@ -165,8 +186,9 @@ function createPostgresStore(pool) {
     },
 
     async listOrders(user) {
-      const scopeJoin = user?.role === "operator" ? "JOIN user_outlets uo ON uo.outlet_id = ord.outlet_id AND uo.user_id = $1" : "";
-      const params = user?.role === "operator" ? [user.id] : [];
+      const scoped = isScopedActor(user);
+      const scopeJoin = scoped ? "JOIN user_outlets uo ON uo.outlet_id = ord.outlet_id AND uo.user_id = $1" : "";
+      const params = scoped ? [user.id] : [];
       const { rows } = await pool.query(`
         SELECT
           ord.id,
@@ -206,8 +228,9 @@ function createPostgresStore(pool) {
     },
 
     async listInventory(user) {
-      const scopeJoin = user?.role === "operator" ? "JOIN user_outlets uo ON uo.outlet_id = p.outlet_id AND uo.user_id = $1" : "";
-      const params = user?.role === "operator" ? [user.id] : [];
+      const scoped = isScopedActor(user);
+      const scopeJoin = scoped ? "JOIN user_outlets uo ON uo.outlet_id = p.outlet_id AND uo.user_id = $1" : "";
+      const params = scoped ? [user.id] : [];
       const { rows } = await pool.query(`
         SELECT
           p.id,
@@ -325,8 +348,9 @@ function createPostgresStore(pool) {
     },
 
     async getDashboardSummary(user) {
-      const scopeJoin = user?.role === "operator" ? "JOIN user_outlets uo ON uo.outlet_id = orders.outlet_id AND uo.user_id = $1" : "";
-      const params = user?.role === "operator" ? [user.id] : [];
+      const scoped = isScopedActor(user);
+      const scopeJoin = scoped ? "JOIN user_outlets uo ON uo.outlet_id = orders.outlet_id AND uo.user_id = $1" : "";
+      const params = scoped ? [user.id] : [];
       const { rows } = await pool.query(`
         SELECT
           COUNT(*)::int AS "totalOrders",
@@ -355,19 +379,28 @@ function createPostgresStore(pool) {
       return rows[0] || null;
     },
 
-    async listUsers() {
+    async listUsers(actor) {
+      const scoped = isScopedActor(actor);
       const { rows } = await pool.query(`
         SELECT id, email, name, role, is_active, created_at, updated_at
         FROM users
+        ${scoped ? "WHERE id IN (SELECT scoped.user_id FROM user_outlets scoped WHERE scoped.outlet_id IN (SELECT outlet_id FROM user_outlets WHERE user_id = $1))" : ""}
         ORDER BY email
-      `);
+      `, scoped ? [actor.id] : []);
       return rows;
     },
 
     async setUserActive(userId, isActive, actor) {
+      const scoped = isScopedActor(actor);
       const { rows } = await pool.query(
-        "UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING id, email, name, role, is_active",
-        [isActive, userId]
+        `
+          UPDATE users
+          SET is_active = $1, updated_at = NOW()
+          WHERE id = $2
+          ${scoped ? "AND id IN (SELECT scoped.user_id FROM user_outlets scoped WHERE scoped.outlet_id IN (SELECT outlet_id FROM user_outlets WHERE user_id = $3))" : ""}
+          RETURNING id, email, name, role, is_active
+        `,
+        scoped ? [isActive, userId, actor.id] : [isActive, userId]
       );
       if (rows.length === 0) throw new Error("User not found.");
       await this.recordAuditEvent({
@@ -389,9 +422,10 @@ function createPostgresStore(pool) {
               password_reset_expires_at = NOW() + INTERVAL '24 hours',
               updated_at = NOW()
           WHERE id = $2
+          ${isScopedActor(actor) ? "AND id IN (SELECT scoped.user_id FROM user_outlets scoped WHERE scoped.outlet_id IN (SELECT outlet_id FROM user_outlets WHERE user_id = $3))" : ""}
           RETURNING id, email, name, role, is_active, password_reset_token, password_reset_expires_at
         `,
-        [token, userId]
+        isScopedActor(actor) ? [token, userId, actor.id] : [token, userId]
       );
       if (rows.length === 0) throw new Error("User not found.");
       await this.recordAuditEvent({
@@ -448,6 +482,7 @@ function createPostgresStore(pool) {
     },
 
     async assignUserOutlet(userId, outletId, actor) {
+      await assertActorCanAccessOutlet(pool, outletId, actor);
       await pool.query(
         "INSERT INTO user_outlets (user_id, outlet_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
         [userId, outletId]
@@ -461,7 +496,8 @@ function createPostgresStore(pool) {
       });
     },
 
-    async listUserOutletAssignments() {
+    async listUserOutletAssignments(actor) {
+      const scoped = isScopedActor(actor);
       const { rows } = await pool.query(`
         SELECT
           uo.user_id,
@@ -474,8 +510,9 @@ function createPostgresStore(pool) {
         JOIN users u ON u.id = uo.user_id
         JOIN outlets o ON o.id = uo.outlet_id
         JOIN organizations org ON org.id = o.organization_id
+        ${scoped ? "WHERE uo.outlet_id IN (SELECT outlet_id FROM user_outlets WHERE user_id = $1)" : ""}
         ORDER BY u.email, org.name, o.name
-      `);
+      `, scoped ? [actor.id] : []);
       return rows;
     },
 
@@ -484,7 +521,8 @@ function createPostgresStore(pool) {
       return rows;
     },
 
-    async listOutlets() {
+    async listOutlets(actor) {
+      const scoped = isScopedActor(actor);
       const { rows } = await pool.query(`
         SELECT
           o.id,
@@ -497,8 +535,9 @@ function createPostgresStore(pool) {
           org.name AS organization_name
         FROM outlets o
         JOIN organizations org ON org.id = o.organization_id
+        ${scoped ? "WHERE o.id IN (SELECT outlet_id FROM user_outlets WHERE user_id = $1)" : ""}
         ORDER BY org.name, o.name
-      `);
+      `, scoped ? [actor.id] : []);
       return rows;
     },
 
@@ -537,6 +576,7 @@ function createPostgresStore(pool) {
     },
 
     async createProduct(input, actor) {
+      await assertActorCanAccessOutlet(pool, input.outletId, actor);
       const { rows } = await pool.query(
         `
           INSERT INTO products (outlet_id, name, unit, price, available_quantity)
@@ -573,20 +613,23 @@ function createPostgresStore(pool) {
           [organization.id, input.outletName, input.city, input.address, input.phone]
         );
         const outlet = outletResult.rows[0];
-        const productResult = await client.query(
-          `
-            INSERT INTO products (outlet_id, name, unit, price, available_quantity)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING *
-          `,
-          [outlet.id, input.productName, input.unit, input.price, input.availableQuantity]
-        );
-        const product = productResult.rows[0];
+        const products = [];
+        for (const productInput of input.products) {
+          const productResult = await client.query(
+            `
+              INSERT INTO products (outlet_id, name, unit, price, available_quantity)
+              VALUES ($1, $2, $3, $4, $5)
+              RETURNING *
+            `,
+            [outlet.id, productInput.name, productInput.unit, productInput.price, productInput.availableQuantity]
+          );
+          products.push(productResult.rows[0]);
+        }
         const activationToken = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
         const userResult = await client.query(
           `
             INSERT INTO users (email, name, password_hash, role, is_active, activation_token, activation_expires_at)
-            VALUES ($1, $2, $3, 'operator', FALSE, $4, NOW() + INTERVAL '24 hours')
+            VALUES ($1, $2, $3, 'admin', FALSE, $4, NOW() + INTERVAL '24 hours')
             RETURNING id, email, name, role, is_active, activation_token, activation_expires_at
           `,
           [input.operatorEmail, input.operatorName, passwordHash, activationToken]
@@ -605,11 +648,11 @@ function createPostgresStore(pool) {
             user.id,
             user.email,
             organization.id,
-            JSON.stringify({ outletId: outlet.id, productId: product.id, userId: user.id })
+            JSON.stringify({ outletId: outlet.id, productIds: products.map((product) => product.id), userId: user.id })
           ]
         );
         await client.query("COMMIT");
-        return { organization, outlet, product, user };
+        return { organization, outlet, product: products[0], products, user };
       } catch (error) {
         await client.query("ROLLBACK");
         if (error.code === "23505") {
@@ -897,6 +940,8 @@ function createPostgresStore(pool) {
     },
 
     async updateProduct(id, input, actor) {
+      await assertActorCanAccessProduct(pool, id, actor);
+      await assertActorCanAccessOutlet(pool, input.outletId, actor);
       const { rows } = await pool.query(
         `
           UPDATE products
@@ -908,6 +953,36 @@ function createPostgresStore(pool) {
       );
       if (rows.length === 0) throw new Error("Product not found.");
       await this.recordAuditEvent({ actor, entityType: "product", entityId: id, action: "product.updated", details: input });
+      return rows[0];
+    },
+
+    async listLoyaltyPrograms(actor) {
+      const scoped = isScopedActor(actor);
+      const { rows } = await pool.query(`
+        SELECT
+          lp.*,
+          o.name AS outlet_name,
+          org.name AS organization_name
+        FROM loyalty_programs lp
+        JOIN outlets o ON o.id = lp.outlet_id
+        JOIN organizations org ON org.id = o.organization_id
+        ${scoped ? "WHERE lp.outlet_id IN (SELECT outlet_id FROM user_outlets WHERE user_id = $1)" : ""}
+        ORDER BY lp.created_at DESC
+      `, scoped ? [actor.id] : []);
+      return rows;
+    },
+
+    async createLoyaltyProgram(input, actor) {
+      await assertActorCanAccessOutlet(pool, input.outletId, actor);
+      const { rows } = await pool.query(
+        `
+          INSERT INTO loyalty_programs (outlet_id, name, reward_type, reward_value, referral_bonus, is_active)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING *
+        `,
+        [input.outletId, input.name, input.rewardType, input.rewardValue, input.referralBonus, input.isActive]
+      );
+      await this.recordAuditEvent({ actor, entityType: "loyalty_program", entityId: rows[0].id, action: "loyalty.created", details: rows[0] });
       return rows[0];
     },
 

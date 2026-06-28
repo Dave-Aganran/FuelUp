@@ -38,6 +38,7 @@ const {
   normalizeCancellationDecisionInput,
   normalizeBuyerSignupInput,
   normalizeInventoryInput,
+  normalizeLoyaltyProgramInput,
   normalizeOrderInput,
   normalizeOrganizationInput,
   normalizeOutletInput,
@@ -54,6 +55,7 @@ const {
   demoPaymentPage,
   inventoryPage,
   loginPage,
+  loyaltyPage,
   marketplacePage,
   onboardingPage,
   orderFormPage,
@@ -114,9 +116,9 @@ async function createApp(config = createConfig()) {
   if (adminConfigured) {
     await store.upsertUser({
       email: config.adminEmail.toLowerCase(),
-      name: "FuelUp Admin",
+      name: "FuelUp Site Manager",
       passwordHash: await hashPassword(config.adminPassword),
-      role: "admin"
+      role: "site_manager"
     });
   } else if (config.isProduction) {
     console.warn("ADMIN_EMAIL and ADMIN_PASSWORD are not configured. Operations login is disabled.");
@@ -621,12 +623,12 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.get("/admin/users", requireRole("admin"), async (request, response, next) => {
+  app.get("/admin/users", requireRole("site_manager", "admin", "outlet_admin"), async (request, response, next) => {
     try {
       response.send(usersPage({
-        users: await store.listUsers(),
-        assignments: await store.listUserOutletAssignments(),
-        outlets: await store.listOutlets(),
+        users: await store.listUsers(request.user),
+        assignments: await store.listUserOutletAssignments(request.user),
+        outlets: await store.listOutlets(request.user),
         usersPage: readPage(request.query, "usersPage"),
         assignmentsPage: readPage(request.query, "assignmentsPage"),
         storeMode: store.mode,
@@ -640,26 +642,35 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.post("/admin/users", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+  app.post("/admin/users", requireRole("site_manager", "admin", "outlet_admin"), requireCsrf(config), async (request, response, next) => {
     try {
       const { input, errors } = normalizeUserInput(request.body);
+      if (request.user.role !== "site_manager" && input.role !== "operator") {
+        errors.push("Outlet admins can only create operator users.");
+      }
       if (errors.length > 0) {
         response.redirect(`/admin/users?error=${encodeURIComponent(errors.join(" "))}`);
         return;
       }
-      await store.upsertUser({
+      const createdUser = await store.upsertUser({
         email: input.email,
         name: input.name,
         role: input.role,
         passwordHash: await hashPassword(input.password)
       });
+      if (request.user.role !== "site_manager") {
+        const outlets = await store.listOutlets(request.user);
+        if (outlets[0]) {
+          await store.assignUserOutlet(createdUser.id, outlets[0].id, request.user);
+        }
+      }
       response.redirect("/admin/users?message=User%20saved");
     } catch (error) {
       next(error);
     }
   });
 
-  app.post("/admin/users/:id/active", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+  app.post("/admin/users/:id/active", requireRole("site_manager", "admin", "outlet_admin"), requireCsrf(config), async (request, response, next) => {
     try {
       const userId = Number(request.params.id);
       const isActive = request.body.isActive === "true";
@@ -670,7 +681,7 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.post("/admin/users/:id/reset", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+  app.post("/admin/users/:id/reset", requireRole("site_manager", "admin", "outlet_admin"), requireCsrf(config), async (request, response, next) => {
     try {
       const user = await store.createPasswordReset(Number(request.params.id), request.user);
       const resetUrl = `${request.protocol}://${request.get("host")}/reset-password?token=${encodeURIComponent(user.password_reset_token)}`;
@@ -685,7 +696,7 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.post("/admin/users/:id/outlets", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+  app.post("/admin/users/:id/outlets", requireRole("site_manager", "admin", "outlet_admin"), requireCsrf(config), async (request, response, next) => {
     try {
       const userId = Number(request.params.id);
       const outletId = Number(request.body.outletId);
@@ -696,7 +707,7 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.get("/settlements.csv", requireRole("admin"), async (_request, response, next) => {
+  app.get("/settlements.csv", requireRole("site_manager"), async (_request, response, next) => {
     try {
       const rows = await store.listSettlementRows({ from: _request.query.from, to: _request.query.to });
       const header = ["order_reference", "buyer_email", "organization", "outlet", "amount", "payment_provider", "payment_reference", "paid_at"];
@@ -722,7 +733,7 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.get("/settlements", requireRole("admin"), async (request, response, next) => {
+  app.get("/settlements", requireRole("site_manager"), async (request, response, next) => {
     try {
       const filters = { from: request.query.from || "", to: request.query.to || "" };
       const rows = await store.listSettlementRows(filters);
@@ -738,7 +749,7 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.get("/notifications", requireRole("admin"), async (_request, response, next) => {
+  app.get("/notifications", requireRole("site_manager"), async (_request, response, next) => {
     try {
       response.json(await store.listNotifications(50));
     } catch (error) {
@@ -746,11 +757,12 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.get("/onboarding", requireRole("admin"), async (request, response, next) => {
+  app.get("/loyalty", requireRole("site_manager", "admin", "outlet_admin"), async (request, response, next) => {
     try {
-      response.send(onboardingPage({
-        organizations: await store.listOrganizations(),
-        outlets: await store.listOutlets(),
+      response.send(loyaltyPage({
+        programs: await store.listLoyaltyPrograms(request.user),
+        outlets: await store.listOutlets(request.user),
+        page: readPage(request.query),
         storeMode: store.mode,
         message: request.query.message || "",
         error: request.query.error || "",
@@ -762,7 +774,34 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.post("/organizations", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+  app.post("/loyalty", requireRole("site_manager", "admin", "outlet_admin"), requireCsrf(config), async (request, response, next) => {
+    try {
+      const { input, errors } = normalizeLoyaltyProgramInput(request.body);
+      if (errors.length > 0) return response.redirect(`/loyalty?error=${encodeURIComponent(errors.join(" "))}`);
+      await store.createLoyaltyProgram(input, request.user);
+      response.redirect("/loyalty?message=Loyalty%20program%20created");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/onboarding", requireRole("site_manager", "admin", "outlet_admin"), async (request, response, next) => {
+    try {
+      response.send(onboardingPage({
+        organizations: await store.listOrganizations(),
+        outlets: await store.listOutlets(request.user),
+        storeMode: store.mode,
+        message: request.query.message || "",
+        error: request.query.error || "",
+        user: request.user,
+        csrfToken: getCsrfToken(request, config)
+      }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/organizations", requireRole("site_manager"), requireCsrf(config), async (request, response, next) => {
     try {
       const { input, errors } = normalizeOrganizationInput(request.body);
       if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
@@ -773,7 +812,7 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.post("/organizations/:id", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+  app.post("/organizations/:id", requireRole("site_manager"), requireCsrf(config), async (request, response, next) => {
     try {
       const { input, errors } = normalizeOrganizationInput(request.body);
       if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
@@ -784,7 +823,7 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.post("/outlets", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+  app.post("/outlets", requireRole("site_manager"), requireCsrf(config), async (request, response, next) => {
     try {
       const { input, errors } = normalizeOutletInput(request.body);
       if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
@@ -795,7 +834,7 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.post("/outlets/:id", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+  app.post("/outlets/:id", requireRole("site_manager"), requireCsrf(config), async (request, response, next) => {
     try {
       const { input, errors } = normalizeOutletInput(request.body);
       if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
@@ -806,7 +845,7 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.post("/products", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+  app.post("/products", requireRole("site_manager", "admin", "outlet_admin"), requireCsrf(config), async (request, response, next) => {
     try {
       const { input, errors } = normalizeProductInput(request.body);
       if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);
@@ -817,7 +856,7 @@ async function createApp(config = createConfig()) {
     }
   });
 
-  app.post("/products/:id", requireRole("admin"), requireCsrf(config), async (request, response, next) => {
+  app.post("/products/:id", requireRole("site_manager", "admin", "outlet_admin"), requireCsrf(config), async (request, response, next) => {
     try {
       const { input, errors } = normalizeProductInput(request.body);
       if (errors.length > 0) return response.redirect(`/onboarding?error=${encodeURIComponent(errors.join(" "))}`);

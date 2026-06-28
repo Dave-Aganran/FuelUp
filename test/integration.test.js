@@ -237,6 +237,7 @@ describe("FuelUp core flows", () => {
     assert.equal(users.status, 200);
     const usersHtml = await users.text();
     assert.match(usersHtml, /User management/);
+    assert.match(usersHtml, /site_manager/);
     const csrf = csrfFrom(usersHtml);
 
     const createUser = await fetch(`${baseUrl}/admin/users`, {
@@ -280,6 +281,59 @@ describe("FuelUp core flows", () => {
     });
     assert.equal(reset.status, 302);
 
+    const createScopedAdmin = await fetch(`${baseUrl}/admin/users`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { cookie: cookies, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        name: "Outlet A Admin",
+        email: "outlet-admin-a@example.com",
+        role: "admin",
+        password: "OutletAdmin123!",
+        csrfToken: assignCsrf
+      })
+    });
+    assert.equal(createScopedAdmin.status, 302);
+
+    const assignScopedAdmin = await fetch(`${baseUrl}/admin/users/3/outlets`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { cookie: cookies, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ outletId: "1", csrfToken: assignCsrf })
+    });
+    assert.equal(assignScopedAdmin.status, 302);
+
+    const scopedAdminLogin = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ email: "outlet-admin-a@example.com", password: "OutletAdmin123!", next: "/inventory" })
+    });
+    assert.equal(scopedAdminLogin.status, 302);
+    const scopedAdminCookies = parseCookies(scopedAdminLogin.headers);
+    const scopedInventory = await fetch(`${baseUrl}/inventory`, { headers: { cookie: scopedAdminCookies } });
+    assert.equal(scopedInventory.status, 200);
+    const scopedInventoryHtml = await scopedInventory.text();
+    assert.match(scopedInventoryHtml, /Northstar Lekki Phase 1/);
+    assert.doesNotMatch(scopedInventoryHtml, /Northstar Victoria Island/);
+    assert.doesNotMatch(scopedInventoryHtml, /LPG Cooking Gas/);
+    const scopedInventoryCsrf = csrfFrom(scopedInventoryHtml);
+    const blockedOutletBUpdate = await fetch(`${baseUrl}/products/3/inventory`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { cookie: scopedAdminCookies, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        price: "725",
+        availableQuantity: "12000",
+        adjustmentMode: "set",
+        adjustmentQuantity: "0",
+        lowStockThreshold: "0",
+        adjustmentReason: "Should not cross outlet scope",
+        csrfToken: scopedInventoryCsrf
+      })
+    });
+    assert.equal(blockedOutletBUpdate.status, 403);
+
     const onboarding = await fetch(`${baseUrl}/onboarding`, { headers: { cookie: cookies } });
     assert.equal(onboarding.status, 200);
     const onboardingHtml = await onboarding.text();
@@ -293,6 +347,27 @@ describe("FuelUp core flows", () => {
       body: formBody({ name: "CI Energy", contactEmail: "ops@cienergy.example", csrfToken: onboardingCsrf })
     });
     assert.equal(createOrg.status, 302);
+
+    const loyalty = await fetch(`${baseUrl}/loyalty`, { headers: { cookie: cookies } });
+    assert.equal(loyalty.status, 200);
+    const loyaltyHtml = await loyalty.text();
+    assert.match(loyaltyHtml, /Loyalty and referral programs/);
+    const loyaltyCsrf = csrfFrom(loyaltyHtml);
+    const createLoyalty = await fetch(`${baseUrl}/loyalty`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { cookie: cookies, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        outletId: "1",
+        name: "MRS Rewards",
+        rewardType: "points",
+        rewardValue: "10",
+        referralBonus: "50",
+        isActive: "on",
+        csrfToken: loyaltyCsrf
+      })
+    });
+    assert.equal(createLoyalty.status, 302);
   });
 
   it("lets buyers track orders and request cancellation", async () => {
@@ -610,9 +685,13 @@ describe("FuelUp core flows", () => {
       address: "Lekki-Epe Expressway",
       phone: "+2348003334444",
       productName: "PMS Petrol",
+      productName2: "AGO Diesel",
       unit: "litre",
+      unit2: "litre",
       price: "730",
+      price2: "1110",
       availableQuantity: "6000",
+      availableQuantity2: "4500",
       operatorName: "Tenant Operator",
       operatorEmail: "tenant.operator@example.com"
     };
@@ -667,6 +746,7 @@ describe("FuelUp core flows", () => {
     const reviewHtml = await operator.text();
     assert.match(reviewHtml, /Review and create your tenant/);
     assert.match(reviewHtml, /Self Serve Energy/);
+    assert.match(reviewHtml, /AGO Diesel/);
     assert.match(reviewHtml, /Completed/);
     assert.match(reviewHtml, /Active now/);
 
@@ -721,14 +801,34 @@ describe("FuelUp core flows", () => {
     const dashboardHtml = await dashboard.text();
     assert.match(dashboardHtml, /tenant.operator@example.com/);
     assert.match(dashboardHtml, />Inventory</);
-    assert.doesNotMatch(dashboardHtml, />Users</);
+    assert.match(dashboardHtml, />Users</);
+    assert.match(dashboardHtml, />Loyalty</);
     assert.doesNotMatch(dashboardHtml, />Settlements</);
+    assert.doesNotMatch(dashboardHtml, /Join FuelUp/);
 
     const adminUsers = await fetch(`${baseUrl}/admin/users`, {
       headers: { cookie: cookies },
       redirect: "manual"
     });
-    assert.equal(adminUsers.status, 403);
+    assert.equal(adminUsers.status, 200);
+    const tenantUsersHtml = await adminUsers.text();
+    assert.match(tenantUsersHtml, /User management/);
+    assert.doesNotMatch(tenantUsersHtml, /<option value="admin">admin<\/option>/);
+
+    const tenantInventory = await fetch(`${baseUrl}/inventory`, { headers: { cookie: cookies } });
+    const tenantInventoryHtml = await tenantInventory.text();
+    assert.match(tenantInventoryHtml, /PMS Petrol/);
+    assert.match(tenantInventoryHtml, /AGO Diesel/);
+
+    const tenantOnboarding = await fetch(`${baseUrl}/onboarding`, { headers: { cookie: cookies } });
+    assert.equal(tenantOnboarding.status, 200);
+    const tenantOnboardingHtml = await tenantOnboarding.text();
+    assert.match(tenantOnboardingHtml, /Outlet product onboarding/);
+    assert.doesNotMatch(tenantOnboardingHtml, /Create organization/);
+
+    const tenantLoyalty = await fetch(`${baseUrl}/loyalty`, { headers: { cookie: cookies } });
+    assert.equal(tenantLoyalty.status, 200);
+    assert.match(await tenantLoyalty.text(), /Loyalty and referral programs/);
   });
 
   it("supports buyer signup with activation baseline", async () => {

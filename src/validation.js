@@ -1,7 +1,7 @@
 const allowedFulfillmentMethods = new Set(["pickup", "delivery"]);
 const allowedStatuses = new Set(["pending", "accepted", "ready", "completed", "cancelled"]);
 const allowedPaymentStatuses = new Set(["unpaid", "invoice_sent", "paid", "refunded"]);
-const allowedRoles = new Set(["admin", "operator"]);
+const allowedRoles = new Set(["site_manager", "admin", "outlet_admin", "operator"]);
 const allowedStockAdjustments = new Set(["set", "add", "remove"]);
 
 function cleanText(value, maxLength) {
@@ -144,7 +144,7 @@ function normalizeUserInput(body) {
 
   if (input.name.length < 2) errors.push("User name is required.");
   if (!isEmail(input.email)) errors.push("A valid user email is required.");
-  if (!allowedRoles.has(input.role)) errors.push("Choose admin or operator role.");
+  if (!allowedRoles.has(input.role)) errors.push("Choose site manager, admin, outlet admin, or operator role.");
   if (input.password.length < 10) errors.push("Password must be at least 10 characters.");
 
   return { input, errors };
@@ -199,6 +199,15 @@ function normalizeProductInput(body) {
 }
 
 function normalizeSelfOnboardingInput(body, step = "review") {
+  const numericField = (value) => String(value ?? "").trim() === "" ? Number.NaN : Number(value);
+  const products = [1, 2, 3]
+    .map((index) => ({
+      name: cleanText(body[`productName${index}`] || (index === 1 ? body.productName : ""), 120),
+      unit: cleanText(body[`unit${index}`] || (index === 1 ? body.unit : ""), 30),
+      price: numericField(body[`price${index}`] || (index === 1 ? body.price : "")),
+      availableQuantity: numericField(body[`availableQuantity${index}`] || (index === 1 ? body.availableQuantity : ""))
+    }))
+    .filter((product, index) => index === 0 || product.name || product.unit || Number.isFinite(product.price) || Number.isFinite(product.availableQuantity));
   const input = {
     organizationName: cleanText(body.organizationName, 160),
     organizationEmail: cleanText(body.organizationEmail, 160).toLowerCase(),
@@ -207,9 +216,22 @@ function normalizeSelfOnboardingInput(body, step = "review") {
     address: cleanText(body.address, 240),
     phone: cleanText(body.phone, 40),
     productName: cleanText(body.productName, 120),
+    productName1: products[0]?.name || "",
+    productName2: products[1]?.name || "",
+    productName3: products[2]?.name || "",
     unit: cleanText(body.unit, 30),
+    unit1: products[0]?.unit || "",
+    unit2: products[1]?.unit || "",
+    unit3: products[2]?.unit || "",
     price: Number(body.price),
+    price1: Number.isFinite(products[0]?.price) ? products[0].price : "",
+    price2: Number.isFinite(products[1]?.price) ? products[1].price : "",
+    price3: Number.isFinite(products[2]?.price) ? products[2].price : "",
     availableQuantity: Number(body.availableQuantity),
+    availableQuantity1: Number.isFinite(products[0]?.availableQuantity) ? products[0].availableQuantity : "",
+    availableQuantity2: Number.isFinite(products[1]?.availableQuantity) ? products[1].availableQuantity : "",
+    availableQuantity3: Number.isFinite(products[2]?.availableQuantity) ? products[2].availableQuantity : "",
+    products,
     operatorName: cleanText(body.operatorName, 120),
     operatorEmail: cleanText(body.operatorEmail, 160).toLowerCase(),
     password: String(body.password || ""),
@@ -236,12 +258,15 @@ function normalizeSelfOnboardingInput(body, step = "review") {
     if (input.phone.length < 7) errors.push("Phone number is required.");
   }
   if (checks.has("product")) {
-    if (input.productName.length < 2) errors.push("Product name is required.");
-    if (input.unit.length < 1) errors.push("Unit is required.");
-    if (!Number.isFinite(input.price) || input.price <= 0) errors.push("Price must be greater than zero.");
-    if (!Number.isFinite(input.availableQuantity) || input.availableQuantity < 0) {
-      errors.push("Available quantity cannot be negative.");
-    }
+    input.products.forEach((product, index) => {
+      const label = index === 0 ? "Primary product" : `Product ${index + 1}`;
+      if (product.name.length < 2) errors.push(`${label} name is required.`);
+      if (product.unit.length < 1) errors.push(`${label} unit is required.`);
+      if (!Number.isFinite(product.price) || product.price <= 0) errors.push(`${label} price must be greater than zero.`);
+      if (!Number.isFinite(product.availableQuantity) || product.availableQuantity < 0) {
+        errors.push(`${label} available quantity cannot be negative.`);
+      }
+    });
   }
   if (checks.has("operator")) {
     if (input.operatorName.length < 2) errors.push("Operator name is required.");
@@ -253,6 +278,26 @@ function normalizeSelfOnboardingInput(body, step = "review") {
     if (!input.acceptedTerms) errors.push("Confirm that you are authorized to create this tenant.");
   }
 
+  return { input, errors };
+}
+
+function normalizeLoyaltyProgramInput(body) {
+  const input = {
+    outletId: Number(body.outletId),
+    name: cleanText(body.name, 120),
+    rewardType: cleanText(body.rewardType || "points", 40),
+    rewardValue: Number(body.rewardValue),
+    referralBonus: Number(body.referralBonus || 0),
+    isActive: body.isActive === "on" || body.isActive === "true"
+  };
+  const errors = [];
+  if (!Number.isInteger(input.outletId) || input.outletId < 1) errors.push("Choose a valid outlet.");
+  if (input.name.length < 2) errors.push("Program name is required.");
+  if (!["points", "cashback", "discount", "wallet_credit"].includes(input.rewardType)) {
+    errors.push("Choose a supported reward type.");
+  }
+  if (!Number.isFinite(input.rewardValue) || input.rewardValue < 0) errors.push("Reward value cannot be negative.");
+  if (!Number.isFinite(input.referralBonus) || input.referralBonus < 0) errors.push("Referral bonus cannot be negative.");
   return { input, errors };
 }
 
@@ -298,6 +343,7 @@ module.exports = {
   normalizeCancellationDecisionInput,
   normalizeBuyerSignupInput,
   normalizeInventoryInput,
+  normalizeLoyaltyProgramInput,
   normalizeOrganizationInput,
   normalizeOrderInput,
   normalizeOutletInput,

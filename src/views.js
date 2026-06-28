@@ -166,11 +166,13 @@ function navItemsFor(user) {
     { href: "/dashboard", label: "Operations", detail: "Fulfilment control" },
     { href: "/inventory", label: "Inventory", detail: "Stock and pricing" }
   ];
-  const adminItems = user.role === "admin"
+  const hasOutletAdminTools = user.role === "site_manager" || user.role === "admin" || user.role === "outlet_admin";
+  const adminItems = hasOutletAdminTools
     ? [
         { href: "/admin/users", label: "Users", detail: "Team access" },
-        { href: "/onboarding", label: "Onboarding", detail: "Organizations and outlets" },
-        { href: "/settlements", label: "Settlements", detail: "Paid order exports" }
+        { href: "/onboarding", label: "Onboarding", detail: user.role === "site_manager" ? "Organizations and outlets" : "Outlet products" },
+        { href: "/loyalty", label: "Loyalty", detail: "Referral and rewards" },
+        ...(user.role === "site_manager" ? [{ href: "/settlements", label: "Settlements", detail: "Paid order exports" }] : [])
       ]
     : [];
 
@@ -292,7 +294,7 @@ const onboardingSteps = [
   { id: "organization", label: "Organization", detail: "Legal identity and contact" },
   { id: "outlet", label: "Outlet", detail: "First station or depot" },
   { id: "product", label: "Product", detail: "Initial inventory listing" },
-  { id: "operator", label: "Operator", detail: "Primary account owner" },
+  { id: "operator", label: "Outlet admin", detail: "Primary account owner" },
   { id: "review", label: "Review", detail: "Confirm and create" }
 ];
 
@@ -305,9 +307,21 @@ function selfOnboardingHiddenFields(values, exclude = []) {
     "address",
     "phone",
     "productName",
+    "productName1",
+    "productName2",
+    "productName3",
     "unit",
+    "unit1",
+    "unit2",
+    "unit3",
     "price",
+    "price1",
+    "price2",
+    "price3",
     "availableQuantity",
+    "availableQuantity1",
+    "availableQuantity2",
+    "availableQuantity3",
     "operatorName",
     "operatorEmail"
   ]
@@ -334,11 +348,24 @@ function selfOnboardingProgress(step) {
 }
 
 function selfOnboardingSummary(values) {
+  const productRows = [1, 2, 3]
+    .map((index) => ({
+      name: values[`productName${index}`] || (index === 1 ? values.productName : ""),
+      unit: values[`unit${index}`] || (index === 1 ? values.unit : ""),
+      price: values[`price${index}`] || (index === 1 ? values.price : ""),
+      availableQuantity: values[`availableQuantity${index}`] || (index === 1 ? values.availableQuantity : "")
+    }))
+    .filter((product, index) => index === 0 || product.name || product.unit || product.price || product.availableQuantity)
+    .map((product, index) => [
+      index === 0 ? "Primary product" : `Product ${index + 1}`,
+      product.name,
+      `${product.availableQuantity || 0} ${product.unit || ""} at ${product.price ? currency.format(product.price) : "No price"}`
+    ]);
   const rows = [
     ["Organization", values.organizationName, values.organizationEmail],
     ["Outlet", values.outletName, `${values.address || ""}${values.city ? `, ${values.city}` : ""}`],
     ["Contact", values.phone, ""],
-    ["Product", values.productName, `${values.availableQuantity || 0} ${values.unit || ""} at ${values.price ? currency.format(values.price) : "No price"}`],
+    ...productRows,
     ["Operator", values.operatorName, values.operatorEmail]
   ];
   return `
@@ -378,17 +405,22 @@ function selfOnboardingStage({ step, values }) {
   if (step === "product") {
     return `
       <h2>What should buyers be able to order first?</h2>
-      <p class="form-footnote">Start with one live product. More products can be added after login.</p>
-      ${hidden(["productName", "unit", "price", "availableQuantity"])}
+      <p class="form-footnote">Add your first live products now. Optional rows can stay empty and more products can still be added after login.</p>
+      ${hidden(["productName", "productName1", "productName2", "productName3", "unit", "unit1", "unit2", "unit3", "price", "price1", "price2", "price3", "availableQuantity", "availableQuantity1", "availableQuantity2", "availableQuantity3"])}
       <input type="hidden" name="step" value="product">
-      <div class="field-row">
-        <label>Product name<input required name="productName" maxlength="120" placeholder="PMS Petrol" value="${escapeHtml(values.productName || "")}"></label>
-        <label>Unit<input required name="unit" maxlength="30" placeholder="litre" value="${escapeHtml(values.unit || "")}"></label>
-      </div>
-      <div class="field-row">
-        <label>Unit price<input required type="number" name="price" min="1" step="0.01" value="${escapeHtml(values.price || "")}"></label>
-        <label>Available quantity<input required type="number" name="availableQuantity" min="0" step="0.01" value="${escapeHtml(values.availableQuantity || "")}"></label>
-      </div>
+      ${[1, 2, 3].map((index) => `
+        <fieldset class="inline-fieldset">
+          <legend>${index === 1 ? "Primary product" : `Optional product ${index}`}</legend>
+          <div class="field-row">
+            <label>Product name<input ${index === 1 ? "required" : ""} name="productName${index}" maxlength="120" placeholder="${index === 1 ? "PMS Petrol" : "AGO Diesel"}" value="${escapeHtml(values[`productName${index}`] || (index === 1 ? values.productName : ""))}"></label>
+            <label>Unit<input ${index === 1 ? "required" : ""} name="unit${index}" maxlength="30" placeholder="litre" value="${escapeHtml(values[`unit${index}`] || (index === 1 ? values.unit : ""))}"></label>
+          </div>
+          <div class="field-row">
+            <label>Unit price<input ${index === 1 ? "required" : ""} type="number" name="price${index}" min="1" step="0.01" value="${escapeHtml(values[`price${index}`] || (index === 1 ? values.price : ""))}"></label>
+            <label>Available quantity<input ${index === 1 ? "required" : ""} type="number" name="availableQuantity${index}" min="0" step="0.01" value="${escapeHtml(values[`availableQuantity${index}`] || (index === 1 ? values.availableQuantity : ""))}"></label>
+          </div>
+        </fieldset>
+      `).join("")}
       <div class="form-actions">${backButton}<button class="button" type="submit" name="direction" value="next">Continue</button></div>
     `;
   }
@@ -396,7 +428,7 @@ function selfOnboardingStage({ step, values }) {
   if (step === "operator") {
     return `
       <h2>Who will manage this tenant?</h2>
-      <p class="form-footnote">This user becomes the first outlet operator and only sees modules relevant to the new outlet.</p>
+      <p class="form-footnote">This user becomes the first outlet admin and only sees modules relevant to the new outlet.</p>
       ${hidden(["operatorName", "operatorEmail"])}
       <input type="hidden" name="step" value="operator">
       <label>Full name<input required name="operatorName" maxlength="120" autocomplete="name" value="${escapeHtml(values.operatorName || "")}"></label>
@@ -408,7 +440,7 @@ function selfOnboardingStage({ step, values }) {
   if (step === "review") {
     return `
       <h2>Review and create your tenant</h2>
-      <p class="form-footnote">Confirm the details, set a secure password, and FuelUp will create the tenant, outlet, product, and scoped operator session.</p>
+      <p class="form-footnote">Confirm the details, set a secure password, and FuelUp will create the tenant, outlet, products, and scoped outlet admin session.</p>
       ${hidden()}
       <input type="hidden" name="step" value="review">
       ${selfOnboardingSummary(values)}
@@ -443,7 +475,7 @@ function selfOnboardingPage({ storeMode, error = "", message = "", values = {}, 
           <aside class="order-context journey-panel">
             <p class="eyebrow">Self-service onboarding</p>
             <h1>Create your tenant step by step.</h1>
-            <p>FuelUp collects only the information needed to publish your first outlet, list inventory, and create a scoped operator login.</p>
+            <p>FuelUp collects only the information needed to publish your first outlet, list inventory, and create a scoped outlet admin login.</p>
             ${selfOnboardingProgress(safeStep)}
           </aside>
           <section class="form-card onboarding-card">
@@ -976,6 +1008,7 @@ function dashboardPage({ orders, summary, auditEvents, page = 1, storeMode, mess
 function usersPage({ users, assignments = [], outlets = [], usersPage = 1, assignmentsPage = 1, storeMode, message = "", error = "", user, csrfToken }) {
   const paginatedUsers = paginateItems(users, usersPage);
   const paginatedAssignments = paginateItems(assignments, assignmentsPage);
+  const roleOptions = user.role === "site_manager" ? ["operator", "admin", "site_manager"] : ["operator"];
   const rows = paginatedUsers.items.map((item) => `
     <tr>
       <td><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.email)}</span></td>
@@ -1014,8 +1047,8 @@ function usersPage({ users, assignments = [], outlets = [], usersPage = 1, assig
         <div><p class="eyebrow">Admin</p><h1>User management</h1><p>Signed in as ${escapeHtml(user.email)}.</p></div>
         <div class="hero-actions">
           <a class="button secondary" href="/onboarding">Onboard outlets</a>
-          <a class="button secondary" href="/settlements">Settlements</a>
-          <a class="button secondary" href="/notifications">Notification outbox</a>
+          <a class="button secondary" href="/loyalty">Loyalty</a>
+          ${user.role === "site_manager" ? `<a class="button secondary" href="/settlements">Settlements</a><a class="button secondary" href="/notifications">Notification outbox</a>` : ""}
         </div>
       </section>
       ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
@@ -1035,7 +1068,7 @@ function usersPage({ users, assignments = [], outlets = [], usersPage = 1, assig
             <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
             <label>Name<input required name="name"></label>
             <label>Email<input required type="email" name="email"></label>
-            <label>Role<select name="role"><option value="operator">operator</option><option value="admin">admin</option></select></label>
+            <label>Role<select name="role">${roleOptions.map((role) => `<option value="${role}">${escapeHtml(role)}</option>`).join("")}</select></label>
             <label>Password<input required type="password" name="password" minlength="10"></label>
             <button class="button wide" type="submit">Create user</button>
           </form>
@@ -1091,19 +1124,23 @@ function settlementsPage({ rows, filters, page = 1, storeMode, user }) {
 }
 
 function onboardingPage({ organizations, outlets, storeMode, message = "", error = "", user, csrfToken }) {
+  const canManageEntities = user.role === "site_manager";
   return layout({
     title: "Onboarding",
     storeMode,
     user,
     body: `
       <section class="dashboard-head">
-        <div><p class="eyebrow">Admin</p><h1>Organization and outlet onboarding</h1><p>Create operators' trading entities and products.</p></div>
-        <a class="button secondary" href="/admin/users">User management</a>
+        <div><p class="eyebrow">Admin</p><h1>${canManageEntities ? "Organization and outlet onboarding" : "Outlet product onboarding"}</h1><p>${canManageEntities ? "Create operators' trading entities and products." : "Expand the product list for the outlets assigned to this tenant admin."}</p></div>
+        <div class="hero-actions">
+          <a class="button secondary" href="/admin/users">User management</a>
+          <a class="button secondary" href="/loyalty">Loyalty</a>
+        </div>
       </section>
       ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
       ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
       <section class="admin-grid">
-        <article class="form-card">
+        ${canManageEntities ? `<article class="form-card">
           <h2>Organization</h2>
           <form method="post" action="/organizations">
             <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
@@ -1111,8 +1148,8 @@ function onboardingPage({ organizations, outlets, storeMode, message = "", error
             <label>Contact email<input required type="email" name="contactEmail"></label>
             <button class="button wide" type="submit">Create organization</button>
           </form>
-        </article>
-        <article class="form-card">
+        </article>` : ""}
+        ${canManageEntities ? `<article class="form-card">
           <h2>Outlet</h2>
           <form method="post" action="/outlets">
             <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
@@ -1124,7 +1161,7 @@ function onboardingPage({ organizations, outlets, storeMode, message = "", error
             <label class="check-row"><input type="checkbox" name="isOpen" checked> Open for orders</label>
             <button class="button wide" type="submit">Create outlet</button>
           </form>
-        </article>
+        </article>` : ""}
         <article class="form-card">
           <h2>Product</h2>
           <form method="post" action="/products">
@@ -1137,6 +1174,67 @@ function onboardingPage({ organizations, outlets, storeMode, message = "", error
             <button class="button wide" type="submit">Create product</button>
           </form>
         </article>
+      </section>
+    `
+  });
+}
+
+function loyaltyPage({ programs, outlets, page = 1, storeMode, message = "", error = "", user, csrfToken }) {
+  const paginatedPrograms = paginateItems(programs, page);
+  const rows = paginatedPrograms.items.map((program) => `
+    <tr>
+      <td><strong>${escapeHtml(program.name)}</strong><span>${escapeHtml(program.organization_name)} - ${escapeHtml(program.outlet_name)}</span></td>
+      <td>${escapeHtml(program.reward_type)}</td>
+      <td>${Number(program.reward_value || 0).toLocaleString()}</td>
+      <td>${Number(program.referral_bonus || 0).toLocaleString()}</td>
+      <td>${program.is_active ? "Active" : "Paused"}</td>
+    </tr>
+  `).join("");
+
+  return layout({
+    title: "Loyalty",
+    storeMode,
+    user,
+    body: `
+      <section class="dashboard-head">
+        <div>
+          <p class="eyebrow">Customer growth</p>
+          <h1>Loyalty and referral programs</h1>
+          <p>Set up the baseline program records needed for referrals, rewards, wallets, and customer retention work.</p>
+        </div>
+        <div class="hero-actions">
+          <a class="button secondary" href="/admin/users">Team access</a>
+          <a class="button secondary" href="/onboarding">Products</a>
+        </div>
+      </section>
+      ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
+      ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
+      <section class="ops-grid">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Program</th><th>Reward type</th><th>Reward value</th><th>Referral bonus</th><th>Status</th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="5" class="empty">No loyalty programs have been configured yet.</td></tr>`}</tbody>
+          </table>
+          ${paginationControls(paginatedPrograms, { basePath: "/loyalty" })}
+        </div>
+        <aside class="activity-panel">
+          <p class="eyebrow">Create program</p>
+          <form method="post" action="/loyalty">
+            <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
+            <label>Outlet<select required name="outletId">${outlets.map((outlet) => `<option value="${outlet.id}">${escapeHtml(outlet.organization_name)} - ${escapeHtml(outlet.name)}</option>`).join("")}</select></label>
+            <label>Program name<input required name="name" maxlength="120" placeholder="MRS Rewards"></label>
+            <label>Reward type<select name="rewardType">
+              <option value="points">points</option>
+              <option value="cashback">cashback</option>
+              <option value="discount">discount</option>
+              <option value="wallet_credit">wallet credit</option>
+            </select></label>
+            <label>Reward value<input required type="number" name="rewardValue" min="0" step="0.01" value="0"></label>
+            <label>Referral bonus<input required type="number" name="referralBonus" min="0" step="0.01" value="0"></label>
+            <label class="check-row"><input type="checkbox" name="isActive" checked> Active program</label>
+            <button class="button wide" type="submit">Create loyalty program</button>
+          </form>
+        </aside>
       </section>
     `
   });
@@ -1255,6 +1353,7 @@ module.exports = {
   demoPaymentPage,
   inventoryPage,
   loginPage,
+  loyaltyPage,
   marketplacePage,
   orderFormPage,
   orderSuccessPage,

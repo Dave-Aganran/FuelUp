@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'operator' CHECK (role IN ('admin', 'operator')),
+  role TEXT NOT NULL DEFAULT 'operator' CHECK (role IN ('site_manager', 'admin', 'outlet_admin', 'operator')),
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   invite_token TEXT UNIQUE,
   invite_expires_at TIMESTAMPTZ,
@@ -119,6 +119,18 @@ CREATE TABLE IF NOT EXISTS buyer_accounts (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS loyalty_programs (
+  id SERIAL PRIMARY KEY,
+  outlet_id INTEGER NOT NULL REFERENCES outlets(id),
+  name TEXT NOT NULL,
+  reward_type TEXT NOT NULL DEFAULT 'points' CHECK (reward_type IN ('points', 'cashback', 'discount', 'wallet_credit')),
+  reward_value NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  referral_bonus NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_reference TEXT UNIQUE;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS unit_price NUMERIC(12, 2);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(14, 2);
@@ -142,6 +154,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ
 ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_token TEXT UNIQUE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_expires_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('site_manager', 'admin', 'outlet_admin', 'operator'));
 
 CREATE INDEX IF NOT EXISTS idx_products_outlet_id ON products(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
@@ -158,3 +172,4 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_entity ON audit_events(entity_type, 
 CREATE INDEX IF NOT EXISTS idx_notification_events_created_at ON notification_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_buyer_accounts_email ON buyer_accounts(email);
 CREATE INDEX IF NOT EXISTS idx_buyer_accounts_activation_token ON buyer_accounts(activation_token);
+CREATE INDEX IF NOT EXISTS idx_loyalty_programs_outlet_id ON loyalty_programs(outlet_id);
