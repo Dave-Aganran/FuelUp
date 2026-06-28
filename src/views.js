@@ -872,31 +872,24 @@ function dashboardPage({ orders, summary, auditEvents, page = 1, storeMode, mess
     )
     .join("");
 
-  const orderRows = paginatedOrders.items.length
+  const orderCards = paginatedOrders.items.length
     ? paginatedOrders.items
         .map(
           (order) => `
-            <tr>
-              <td>
+            <article class="collection-card order-card">
+              <div class="collection-main">
                 <strong>${escapeHtml(order.order_reference || `#${order.id}`)}</strong>
                 <span>${new Date(order.created_at).toLocaleString()}</span>
-              </td>
-              <td>
-                <strong>${escapeHtml(order.buyer_name)}</strong>
-                <span>${escapeHtml(order.buyer_phone)}</span>
-              </td>
-              <td>
-                <strong>${escapeHtml(order.product_name)}</strong>
-                <span>${formatQuantity(order.quantity)} ${escapeHtml(order.unit)}</span>
-              </td>
-              <td>
-                <strong>${escapeHtml(order.outlet_name)}</strong>
-                <span>${escapeHtml(order.organization_name)}</span>
-              </td>
-              <td>${currency.format(order.total_amount || Number(order.quantity) * Number(order.price || 0))}</td>
-              <td><span class="status status-${escapeHtml(order.status)}">${escapeHtml(order.status)}</span></td>
-              <td>
-                <form class="inline-form" method="post" action="/orders/${order.id}/status">
+                <span class="status status-${escapeHtml(order.status)}">${escapeHtml(statusLabel(order.status))}</span>
+              </div>
+              <dl class="collection-details">
+                <div><dt>Buyer</dt><dd>${escapeHtml(order.buyer_name)}<span>${escapeHtml(order.buyer_phone)}</span></dd></div>
+                <div><dt>Product</dt><dd>${escapeHtml(order.product_name)}<span>${formatQuantity(order.quantity)} ${escapeHtml(order.unit)}</span></dd></div>
+                <div><dt>Outlet</dt><dd>${escapeHtml(order.outlet_name)}<span>${escapeHtml(order.organization_name)}</span></dd></div>
+                <div><dt>Value</dt><dd>${currency.format(order.total_amount || Number(order.quantity) * Number(order.price || 0))}</dd></div>
+              </dl>
+              <div class="collection-actions">
+                <form class="action-form" method="post" action="/orders/${order.id}/status">
                   <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
                   <select name="status" aria-label="Order status">
                     ${["pending", "accepted", "ready", "completed", "cancelled"]
@@ -908,7 +901,7 @@ function dashboardPage({ orders, summary, auditEvents, page = 1, storeMode, mess
                   </select>
                   <button type="submit">Update</button>
                 </form>
-                <form class="inline-form" method="post" action="/orders/${order.id}/payment">
+                <form class="action-form" method="post" action="/orders/${order.id}/payment">
                   <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
                   <select name="paymentStatus" aria-label="Payment status">
                     ${["unpaid", "invoice_sent", "paid", "refunded"]
@@ -918,7 +911,7 @@ function dashboardPage({ orders, summary, auditEvents, page = 1, storeMode, mess
                   <button type="submit">Payment</button>
                 </form>
                 ${order.cancellation_requested && !order.cancellation_decision ? `
-                  <form class="inline-form" method="post" action="/orders/${order.id}/cancellation">
+                  <form class="action-form action-form-wide" method="post" action="/orders/${order.id}/cancellation">
                     <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
                     <select name="decision" aria-label="Cancellation decision">
                       <option value="approved">approve cancel</option>
@@ -928,12 +921,12 @@ function dashboardPage({ orders, summary, auditEvents, page = 1, storeMode, mess
                     <button type="submit">Decide</button>
                   </form>
                 ` : ""}
-              </td>
-            </tr>
+              </div>
+            </article>
           `
         )
         .join("")
-    : `<tr><td colspan="7" class="empty">No orders yet. Place one from the marketplace to test the flow.</td></tr>`;
+    : `<p class="empty-panel">No orders yet. Place one from the marketplace to test the flow.</p>`;
 
   return layout({
     title: "Operations Dashboard",
@@ -978,21 +971,8 @@ function dashboardPage({ orders, summary, auditEvents, page = 1, storeMode, mess
       ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
 
       <section class="ops-grid">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Buyer</th>
-                <th>Product</th>
-                <th>Outlet</th>
-                <th>Value</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>${orderRows}</tbody>
-          </table>
+        <div class="collection-wrap">
+          <div class="collection-list">${orderCards}</div>
           ${paginationControls(paginatedOrders, { basePath: "/dashboard" })}
         </div>
         <aside class="activity-panel">
@@ -1009,33 +989,46 @@ function usersPage({ users, assignments = [], outlets = [], usersPage = 1, assig
   const paginatedUsers = paginateItems(users, usersPage);
   const paginatedAssignments = paginateItems(assignments, assignmentsPage);
   const roleOptions = user.role === "site_manager" ? ["operator", "admin", "site_manager"] : ["operator"];
-  const rows = paginatedUsers.items.map((item) => `
-    <tr>
-      <td><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.email)}</span></td>
-      <td>${escapeHtml(item.role)}</td>
-      <td>${item.is_active ? "Active" : "Disabled"}</td>
-      <td>
-        <form class="inline-form" method="post" action="/admin/users/${item.id}/active">
+  const userCards = paginatedUsers.items.map((item) => `
+    <article class="collection-card user-card">
+      <div class="collection-main">
+        <strong>${escapeHtml(item.name)}</strong>
+        <span>${escapeHtml(item.email)}</span>
+        <span class="status ${item.is_active ? "status-ready" : "status-cancelled"}">${item.is_active ? "Active" : "Disabled"}</span>
+      </div>
+      <dl class="collection-details">
+        <div><dt>Role</dt><dd>${escapeHtml(item.role)}</dd></div>
+      </dl>
+      <div class="collection-actions">
+        <form class="action-form" method="post" action="/admin/users/${item.id}/active">
           <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
           <input type="hidden" name="isActive" value="${item.is_active ? "false" : "true"}">
           <button type="submit">${item.is_active ? "Disable" : "Enable"}</button>
         </form>
-        <form class="inline-form" method="post" action="/admin/users/${item.id}/reset">
+        <form class="action-form action-form-button" method="post" action="/admin/users/${item.id}/reset">
           <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
           <button type="submit">Reset</button>
         </form>
-        <form class="inline-form" method="post" action="/admin/users/${item.id}/outlets">
+        <form class="action-form action-form-wide" method="post" action="/admin/users/${item.id}/outlets">
           <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
           <select name="outletId" aria-label="Assign outlet">
             ${outlets.map((outlet) => `<option value="${outlet.id}">${escapeHtml(outlet.organization_name)} - ${escapeHtml(outlet.name)}</option>`).join("")}
           </select>
           <button type="submit">Assign</button>
         </form>
-      </td>
-    </tr>
+      </div>
+    </article>
   `).join("");
-  const assignmentRows = paginatedAssignments.items.map((item) => `
-    <tr><td>${escapeHtml(item.user_email)}</td><td>${escapeHtml(item.organization_name || "")}</td><td>${escapeHtml(item.outlet_name)}</td></tr>
+  const assignmentCards = paginatedAssignments.items.map((item) => `
+    <article class="collection-card">
+      <div class="collection-main">
+        <strong>${escapeHtml(item.user_email)}</strong>
+        <span>${escapeHtml(item.organization_name || "")}</span>
+      </div>
+      <dl class="collection-details">
+        <div><dt>Outlet</dt><dd>${escapeHtml(item.outlet_name)}</dd></div>
+      </dl>
+    </article>
   `).join("");
 
   return layout({
@@ -1054,8 +1047,8 @@ function usersPage({ users, assignments = [], outlets = [], usersPage = 1, assig
       ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
       ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
       <section class="ops-grid">
-        <div class="table-wrap">
-          <table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Controls</th></tr></thead><tbody>${rows}</tbody></table>
+        <div class="collection-wrap">
+          <div class="collection-list">${userCards || `<p class="empty-panel">No users found.</p>`}</div>
           ${paginationControls(paginatedUsers, {
             basePath: "/admin/users",
             param: "usersPage",
@@ -1074,8 +1067,9 @@ function usersPage({ users, assignments = [], outlets = [], usersPage = 1, assig
           </form>
         </aside>
       </section>
-      <section class="table-wrap spaced">
-        <table><thead><tr><th>User</th><th>Organization</th><th>Outlet</th></tr></thead><tbody>${assignmentRows || `<tr><td colspan="3" class="empty">No outlet assignments yet.</td></tr>`}</tbody></table>
+      <section class="collection-wrap spaced">
+        <div class="section-minihead"><p class="eyebrow">Outlet assignments</p></div>
+        <div class="collection-list">${assignmentCards || `<p class="empty-panel">No outlet assignments yet.</p>`}</div>
         ${paginationControls(paginatedAssignments, {
           basePath: "/admin/users",
           param: "assignmentsPage",
@@ -1088,15 +1082,19 @@ function usersPage({ users, assignments = [], outlets = [], usersPage = 1, assig
 
 function settlementsPage({ rows, filters, page = 1, storeMode, user }) {
   const paginatedRows = paginateItems(rows, page);
-  const tableRows = paginatedRows.items.map((row) => `
-    <tr>
-      <td>${escapeHtml(row.order_reference)}</td>
-      <td>${escapeHtml(row.buyer_email)}</td>
-      <td>${escapeHtml(row.organization_name)} / ${escapeHtml(row.outlet_name)}</td>
-      <td>${currency.format(row.total_amount || 0)}</td>
-      <td>${escapeHtml(row.payment_reference || "")}</td>
-      <td>${escapeHtml(row.paid_at || "")}</td>
-    </tr>
+  const settlementCards = paginatedRows.items.map((row) => `
+    <article class="collection-card">
+      <div class="collection-main">
+        <strong>${escapeHtml(row.order_reference)}</strong>
+        <span>${escapeHtml(row.buyer_email)}</span>
+        <span class="status status-ready">${currency.format(row.total_amount || 0)}</span>
+      </div>
+      <dl class="collection-details">
+        <div><dt>Outlet</dt><dd>${escapeHtml(row.organization_name)}<span>${escapeHtml(row.outlet_name)}</span></dd></div>
+        <div><dt>Reference</dt><dd>${escapeHtml(row.payment_reference || "No reference")}</dd></div>
+        <div><dt>Paid at</dt><dd>${escapeHtml(row.paid_at || "")}</dd></div>
+      </dl>
+    </article>
   `).join("");
   const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value)).toString();
   return layout({
@@ -1115,8 +1113,8 @@ function settlementsPage({ rows, filters, page = 1, storeMode, user }) {
           <button class="button" type="submit">Filter</button>
         </form>
       </section>
-      <section class="table-wrap spaced">
-        <table><thead><tr><th>Order</th><th>Buyer</th><th>Outlet</th><th>Amount</th><th>Reference</th><th>Paid at</th></tr></thead><tbody>${tableRows || `<tr><td colspan="6" class="empty">No paid orders for this period.</td></tr>`}</tbody></table>
+      <section class="collection-wrap spaced">
+        <div class="collection-list">${settlementCards || `<p class="empty-panel">No paid orders for this period.</p>`}</div>
         ${paginationControls(paginatedRows, { basePath: "/settlements", query: filters })}
       </section>
     `
@@ -1181,14 +1179,19 @@ function onboardingPage({ organizations, outlets, storeMode, message = "", error
 
 function loyaltyPage({ programs, outlets, page = 1, storeMode, message = "", error = "", user, csrfToken }) {
   const paginatedPrograms = paginateItems(programs, page);
-  const rows = paginatedPrograms.items.map((program) => `
-    <tr>
-      <td><strong>${escapeHtml(program.name)}</strong><span>${escapeHtml(program.organization_name)} - ${escapeHtml(program.outlet_name)}</span></td>
-      <td>${escapeHtml(program.reward_type)}</td>
-      <td>${Number(program.reward_value || 0).toLocaleString()}</td>
-      <td>${Number(program.referral_bonus || 0).toLocaleString()}</td>
-      <td>${program.is_active ? "Active" : "Paused"}</td>
-    </tr>
+  const programCards = paginatedPrograms.items.map((program) => `
+    <article class="collection-card">
+      <div class="collection-main">
+        <strong>${escapeHtml(program.name)}</strong>
+        <span>${escapeHtml(program.organization_name)} - ${escapeHtml(program.outlet_name)}</span>
+        <span class="status ${program.is_active ? "status-ready" : "status-cancelled"}">${program.is_active ? "Active" : "Paused"}</span>
+      </div>
+      <dl class="collection-details">
+        <div><dt>Reward type</dt><dd>${escapeHtml(program.reward_type)}</dd></div>
+        <div><dt>Reward value</dt><dd>${Number(program.reward_value || 0).toLocaleString()}</dd></div>
+        <div><dt>Referral bonus</dt><dd>${Number(program.referral_bonus || 0).toLocaleString()}</dd></div>
+      </dl>
+    </article>
   `).join("");
 
   return layout({
@@ -1210,11 +1213,8 @@ function loyaltyPage({ programs, outlets, page = 1, storeMode, message = "", err
       ${message ? `<p class="notice">${escapeHtml(message)}</p>` : ""}
       ${error ? `<p class="alert">${escapeHtml(error)}</p>` : ""}
       <section class="ops-grid">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Program</th><th>Reward type</th><th>Reward value</th><th>Referral bonus</th><th>Status</th></tr></thead>
-            <tbody>${rows || `<tr><td colspan="5" class="empty">No loyalty programs have been configured yet.</td></tr>`}</tbody>
-          </table>
+        <div class="collection-wrap">
+          <div class="collection-list">${programCards || `<p class="empty-panel">No loyalty programs have been configured yet.</p>`}</div>
           ${paginationControls(paginatedPrograms, { basePath: "/loyalty" })}
         </div>
         <aside class="activity-panel">
@@ -1245,16 +1245,20 @@ function inventoryPage({ products, auditEvents, page = 1, storeMode, message = "
   const totalStock = products.reduce((sum, product) => sum + Number(product.available_quantity || 0), 0);
   const paginatedProducts = paginateItems(products, page);
   const visibleAuditEvents = (auditEvents || []).slice(0, PAGE_SIZE);
-  const rows = paginatedProducts.items.length
+  const productCards = paginatedProducts.items.length
     ? paginatedProducts.items.map((product) => `
-        <tr>
-          <td>
+        <article class="collection-card inventory-card">
+          <div class="collection-main">
             <strong>${escapeHtml(product.name)}</strong>
             <span>${escapeHtml(product.organization_name)} · ${escapeHtml(product.outlet_name)}</span>
-          </td>
-          <td>${escapeHtml(product.city)}</td>
-          <td>${escapeHtml(product.unit)}</td>
-          <td>
+            <span class="status ${Number(product.available_quantity || 0) <= Number(product.low_stock_threshold || 0) ? "status-pending" : "status-ready"}">${formatQuantity(product.available_quantity)} ${escapeHtml(product.unit)}</span>
+          </div>
+          <dl class="collection-details">
+            <div><dt>City</dt><dd>${escapeHtml(product.city)}</dd></div>
+            <div><dt>Unit price</dt><dd>${currency.format(product.price || 0)}</dd></div>
+            <div><dt>Low alert</dt><dd>${formatQuantity(product.low_stock_threshold || 0)}</dd></div>
+          </dl>
+          <div class="inventory-action-panel">
             <form class="inventory-form" method="post" action="/products/${product.id}/inventory">
               <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}">
               <label>
@@ -1287,10 +1291,10 @@ function inventoryPage({ products, auditEvents, page = 1, storeMode, message = "
               </label>
               <button type="submit">Save</button>
             </form>
-          </td>
-        </tr>
+          </div>
+        </article>
       `).join("")
-    : `<tr><td colspan="4" class="empty">No inventory records found.</td></tr>`;
+    : `<p class="empty-panel">No inventory records found.</p>`;
 
   return layout({
     title: "Inventory",
@@ -1323,18 +1327,8 @@ function inventoryPage({ products, auditEvents, page = 1, storeMode, message = "
       </section>
 
       <section class="ops-grid">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>City</th>
-                <th>Unit</th>
-                <th>Update</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
+        <div class="collection-wrap">
+          <div class="collection-list">${productCards}</div>
           ${paginationControls(paginatedProducts, { basePath: "/inventory" })}
         </div>
         <aside class="activity-panel">

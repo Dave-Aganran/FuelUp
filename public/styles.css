@@ -699,6 +699,7 @@ textarea {
 
 .table-wrap {
   overflow-x: auto;
+  max-width: 100%;
 }
 
 .table-wrap.spaced {
@@ -751,8 +752,117 @@ textarea {
 
 table {
   width: 100%;
-  min-width: 980px;
+  min-width: 680px;
   border-collapse: collapse;
+}
+
+.collection-wrap {
+  min-width: 0;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.collection-wrap.spaced {
+  margin-top: 16px;
+}
+
+.section-minihead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.collection-list {
+  display: grid;
+  gap: 14px;
+}
+
+.collection-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.collection-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  min-width: 0;
+}
+
+.collection-main strong {
+  min-width: min(240px, 100%);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.collection-main span:not(.status) {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.collection-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.collection-details div {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid rgba(68, 85, 78, 0.1);
+  border-radius: 6px;
+  background: rgba(248, 251, 250, 0.82);
+}
+
+.collection-details dd {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  font-size: 0.94rem;
+}
+
+.collection-details dd span {
+  font-size: 0.84rem;
+}
+
+.collection-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.action-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin: 0;
+}
+
+.action-form-button {
+  grid-template-columns: 1fr;
+}
+
+.action-form-wide {
+  grid-column: 1 / -1;
+}
+
+.inventory-action-panel {
+  padding-top: 2px;
 }
 
 th,
@@ -778,7 +888,7 @@ th {
 
 .inventory-form {
   display: grid;
-  grid-template-columns: minmax(110px, 0.85fr) minmax(120px, 0.85fr) minmax(110px, 0.8fr) minmax(180px, 1fr) auto;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   gap: 10px;
   align-items: end;
   margin: 0;
