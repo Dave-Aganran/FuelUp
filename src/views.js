@@ -195,6 +195,7 @@ function layout({ title, body, storeMode, user = null }) {
     <meta name="description" content="FuelUp connects downstream oil and gas outlets with buyers for product availability, order reservation, and outlet fulfillment.">
     <title>${escapeHtml(title)} | FuelUp</title>
     <link rel="stylesheet" href="/styles.css">
+    <script defer src="/app.js"></script>
   </head>
   <body>
     <div class="app-layout">
@@ -222,6 +223,7 @@ function layout({ title, body, storeMode, user = null }) {
       </footer>
     </div>
     </div>
+    <div class="interaction-toast" aria-live="polite" aria-atomic="true"></div>
   </body>
 </html>`;
 }
