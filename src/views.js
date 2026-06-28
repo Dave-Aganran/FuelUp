@@ -4,6 +4,7 @@ const currency = new Intl.NumberFormat("en-NG", {
   maximumFractionDigits: 0
 });
 const PAGE_SIZE = 5;
+const ASSET_VERSION = encodeURIComponent(String(process.env.RENDER_GIT_COMMIT || "premium-20260628"));
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -194,8 +195,8 @@ function layout({ title, body, storeMode, user = null }) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FuelUp connects downstream oil and gas outlets with buyers for product availability, order reservation, and outlet fulfillment.">
     <title>${escapeHtml(title)} | FuelUp</title>
-    <link rel="stylesheet" href="/styles.css">
-    <script defer src="/app.js"></script>
+    <link rel="stylesheet" href="/styles.css?v=${ASSET_VERSION}">
+    <script defer src="/app.js?v=${ASSET_VERSION}"></script>
   </head>
   <body>
     <div class="app-layout">

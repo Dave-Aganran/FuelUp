@@ -175,7 +175,13 @@ async function createApp(config = createConfig()) {
   app.use(express.urlencoded({ extended: false, limit: config.maxRequestBody }));
   app.use(parseCookies);
   app.use(attachUser(config));
-  app.use(express.static("public", { maxAge: config.isProduction ? "1h" : 0 }));
+  app.use(express.static("public", {
+    etag: true,
+    maxAge: 0,
+    setHeaders(response) {
+      response.setHeader("Cache-Control", "no-cache");
+    }
+  }));
 
   app.get("/health", (_request, response) => {
     response.json({ ok: true, mode: store.mode, env: config.nodeEnv });

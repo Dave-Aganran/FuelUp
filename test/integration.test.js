@@ -68,6 +68,8 @@ describe("FuelUp core flows", () => {
     assert.match(homeHtml, /Verified downstream trading/);
     assert.match(homeHtml, /Join FuelUp/);
     assert.match(homeHtml, /Buyer signup/);
+    assert.match(homeHtml, /\/styles\.css\?v=/);
+    assert.match(homeHtml, /\/app\.js\?v=/);
     assert.doesNotMatch(homeHtml, />Operations</);
     assert.doesNotMatch(homeHtml, />Users</);
   });
